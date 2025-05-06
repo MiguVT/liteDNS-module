@@ -1,92 +1,114 @@
 # liteDNS
 
-> 🧠 A systemless, root-safe DNS configuration module for Android devices using KernelSU or Magisk.
-
-**liteDNS** is a lightweight DNS setter that applies custom system DNS properties early at boot time using `resetprop`, `system.prop`, and interface-based detection.
-
-Designed to be **clean, fast, and invisible**, it avoids background processes, overlays, and root detection issues.
+**liteDNS** is a minimalist, systemless DNS configuration module for rooted Android devices (Magisk or KernelSU). It applies custom DNS settings at boot—overriding only mobile‐data interfaces—and can optionally enable **DNS-over-HTTPS (DoH)** via `dnscrypt-proxy`. Built for privacy, reliability, and compatibility with root-sensitive apps.
 
 ---
 
-## ✅ Features
+## ✅ Key Features
 
-- ⚙️ **Full support for KernelSU and Magisk**
-- 📦 Uses KernelSU’s **OverlayFS** and **BusyBox** environment
-- 📁 Systemless — no modifications to `/system`, `/vendor`, or `/product`
-- 🧼 Clean configuration via `config.sh`
-- 🚫 No background daemons, services, or overlays
-- 🔒 Root-safe: no impact on SafetyNet, Play Integrity or banking apps
-
----
-
-## 📥 Installation
-
-1. Flash the module via **KernelSU Manager** or **Magisk Manager**.
-2. (Optional) Customize your DNS settings by editing:
-
-   ```bash
-   /data/adb/modules/liteDNS/config.sh
-   ```
-
-3. Reboot your device. That’s it!
-
-By default, liteDNS applies **Cloudflare DNS (1.1.1.1 / 1.0.0.1)** if no config is changed.
+* ⚙️ **Magisk & KernelSU compatible** (uses `resetprop -n` or `setprop` fallback)
+* 🔧 **Systemless DNS override**—no writes to `/system`, `/vendor`, or `/product`
+* 🔍 **Interface-aware**: applies DNS only to mobile‐data interfaces (`rmnet*`, `pdp*`, `ppp*`)
+* 🌐 **Optional DoH** via auto-downloaded `dnscrypt-proxy` (latest GitHub release)
+* 🌱 **IPv4 & IPv6 support**—configurable upstream servers
+* 🪵 **Verbose, rotatable logs** (`litedns-service.log`, `dnscrypt.log`, `dnscrypt-fail.log`)
+* 🔁 **Failsafe fallback** to standard DNS if DoH fails to start
+* 🔐 No root-detection hooks, Zygisk bypass, or SELinux modifications
 
 ---
 
-## 🔐 Root Detection Compatibility
+## 📦 Installation
 
-> ✨ Works out of the box with SafetyNet, Play Integrity, and root-sensitive apps.
+1. **Flash** the `liteDNS.zip` installer via Magisk Manager or KernelSU manager.
+2. **Interact** when prompted:
 
-liteDNS only modifies **non-sensitive system properties** like:
+   * Overwrite existing config? (NO to keep, YES to reset)
+   * Enable DoH? (YES recommended)
+3. **Reboot**. The module auto‐detects CPU architecture, downloads `dnscrypt-proxy`, and configures DNS.
+
+---
+
+## ⚙️ Configuration
+
+After install, edit `/data/adb/modules/liteDNS/config.sh` to tweak behavior:
 
 ```bash
-net.dns1=1.1.1.1
-net.dns2=1.0.0.1
+# Whether to enable DNS-over-HTTPS (1=Yes, 0=No)
+ENABLE_DOH=1
+
+# Whether to apply IPv6 DNS (1=Yes, 0=No)
+ENABLE_IPV6=1
+
+# Verbose logging (1=On, 0=Off)
+VERBOSE_LOG=1
+
+# Fallback to standard DNS if DoH fails (1=Yes, 0=No)
+FAILSAFE_FALLBACK=1
+
+# Custom IPv4 DNS upstream (used if DoH disabled or fallback)
+DNS1=1.1.1.1
+DNS2=1.0.0.1
+
+# Custom IPv6 DNS upstream (used if ENABLE_IPV6=1)
+DNS6_1=2606:4700:4700::1111
+DNS6_2=2606:4700:4700::1001
 ```
 
-It does **not**:
+**Notes:**
 
-- Hook into Zygisk or inject native code
-- Modify protected system partitions
-- Change SELinux contexts or policies
-- Add overlays or persistent processes
-- Spoof root status or affect DenyList/App Isolation
-
-You can verify this using tools like **Play Integrity Checker**, **RootBeer**, or your favorite banking app.
+* Editing these variables and **rebooting** is all that’s required.
+* Removing `config.sh` and reflashing triggers the interactive installer again.
 
 ---
 
-## 🛠️ Developer Notes
+## 🧪 Logs & Debugging
 
-- ❌ Avoid using `setprop` in `post-fs-data.sh` with KernelSU — it can **freeze boot**.
-- ✅ Use `resetprop -n` to set properties safely at early boot.
-- 🔄 Always validate compatibility against the current **Magisk** and **KernelSU** versions.
-- 🧪 For advanced users: customize interfaces, fallback behavior and more via `config.sh`.
-
----
-
-## 🧼 Uninstallation
-
-You can:
-
-- Remove the module through KernelSU or Magisk Manager
-- Or: create a `remove` file in the module folder:
+* **Module log**:
 
   ```bash
-  /data/adb/modules/liteDNS/remove
+  cat /data/adb/modules/liteDNS/litedns-service.log
   ```
 
-Then reboot. Done.
+* **DoH proxy stdout**:
+
+  ```bash
+  cat /data/adb/modules/liteDNS/dnscrypt.log
+  ```
+
+* **DoH proxy stderr**:
+
+  ```bash
+  cat /data/adb/modules/liteDNS/dnscrypt-fail.log
+  ```
+
+Logs rotate at each boot (`.bak` backup).
 
 ---
 
-## 💚 Contributing / Feedback
+## 🔒 Privacy & Safety
 
-liteDNS is a minimalistic project, but feedback, improvements, and pull requests are always welcome.
+* **No SELinux rule changes**, no system-level modifications.
+* **Does not trigger** SafetyNet, Play Integrity, banking app checks, or Zygisk detection.
+* **Fully systemless** via Magisk overlay or KernelSU’s OverlayFS.
 
 ---
 
-## 📄 License
+## 🔄 Uninstallation
 
-MIT — do whatever you want, just don’t break things for others.
+* **Via Magisk/KernelSU Manager**: remove module, reboot.
+* **Manual**: create an empty `remove` file in `/data/adb/modules/liteDNS/` and reboot.
+
+---
+
+## 🛠 Advanced Considerations
+
+* **Customizing `dnscrypt-proxy.toml`**: tweak server names, DNSSEC, logging, filters.
+* **Updating `dnscrypt-proxy`**: reflashing the module installs the latest release.
+* **Extending features**: you can add UI actions (`action.sh`) or watchdog scripts for `dnscrypt-proxy`.
+
+---
+
+## 📜 License & Credits
+
+* **liteDNS** is MIT-licensed.
+* `dnscrypt-proxy` is maintained by [jedisct1](https://github.com/jedisct1/dnscrypt-proxy) under the ISC license.
