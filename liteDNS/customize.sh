@@ -51,35 +51,63 @@ for cmd in curl unzip; do
 done
 
 # ─────────────────────────────────────────────────────────────
+# 🔉 Volume‐key detection (10s timeout)
+detect_vol_key() {
+  ui_print "Press VOL+ for YES or VOL- for NO (10s)…"
+  SECONDS=0
+  while [ $SECONDS -lt 10 ]; do
+    for ev in /dev/input/event*; do
+      getevent -lc 1 "$ev" 2>/dev/null | while IFS= read -r line; do
+        case "$line" in
+          *KEY_VOLUMEUP*1) return 0 ;;   # VOL+ → yes
+          *KEY_VOLUMEDOWN*1) return 1 ;; # VOL- → no
+        esac
+      done
+    done
+  done
+  return 2  # timeout
+}
+
+# ─────────────────────────────────────────────────────────────
 # 🔐 DoH prompt
 ui_print "🛡️ liteDNS DoH Integration"
-ui_print "Would you like to enable DNS over HTTPS using dnscrypt-proxy?"
-ui_print "    [Volume +] Yes (recommended)"
-ui_print "    [Volume -] No"
+ui_print "Would you like to enable DNS-over-HTTPS using dnscrypt-proxy?"
+ui_print "    [VOL+] Yes (recommended)"
+ui_print "    [VOL-] No"
 
-chooseport 443
+detect_vol_key
 CHOICE=$?
 
-if [ "$CHOICE" = "0" ]; then
+if [ "$CHOICE" = 0 ]; then
   ui_print "✔️ DoH installation selected."
-  ENABLE_DOH="1"
-elif [ "$CHOICE" = "1" ]; then
+  ENABLE_DOH=1
+elif [ "$CHOICE" = 1 ]; then
   ui_print "❌ DoH skipped by user."
-  ENABLE_DOH="0"
+  ENABLE_DOH=0
 else
-  ui_print "⚠️ No input detected. Assuming YES by default (recommended)."
-  ENABLE_DOH="1"
+  ui_print "⚠️ No key press detected. Defaulting to YES."
+  ENABLE_DOH=1
 fi
 
 # Save config
-echo "ENABLE_DOH=$ENABLE_DOH" > "$CONFIG"
-echo "VERBOSE_LOG=1" >> "$CONFIG"
-echo "FAILSAFE_FALLBACK=1" >> "$CONFIG"
-echo "ENABLE_IPV6=1" >> "$CONFIG"
+cat > "$CONFIG" <<EOF
+ENABLE_DOH=$ENABLE_DOH
+VERBOSE_LOG=1
+FAILSAFE_FALLBACK=1
+ENABLE_IPV6=1
+EOF
 
 # ─────────────────────────────────────────────────────────────
 # 🌐 Download & setup dnscrypt-proxy
 if [ "$ENABLE_DOH" = "1" ]; then
+
+  # ───── Internet check ─────
+  ui_print "🔌 Checking network…"
+  if ! curl -fsSL --head https://api.github.com >/dev/null 2>&1; then
+    abort "❌ No Internet connection detected. Please ensure network and retry."
+  fi
+
+  # ───── Download dnscrypt-proxy ─────
   ui_print "🌐 Fetching latest dnscrypt-proxy version..."
 
   VERSION=$(curl -fsSL "$API_URL" | grep -o '"tag_name": *"[^"]*"' | head -n1 | cut -d'"' -f4)
@@ -91,18 +119,14 @@ if [ "$ENABLE_DOH" = "1" ]; then
   ui_print "⬇️ Downloading: $ZIP_NAME"
 
   mkdir -p "$BIN_DIR"
-  if ! curl -fsSL -o "$BIN_ZIP" "$ZIP_URL"; then
-    abort "❌ Failed to download $ZIP_NAME."
-  fi
+  curl -fsSL -o "$BIN_ZIP" "$ZIP_URL" \
+    || abort "❌ Download failed."
 
-  if ! unzip -o "$BIN_ZIP" -d "$BIN_DIR" >/dev/null 2>&1; then
-    rm -f "$BIN_ZIP"
-    abort "❌ Failed to unzip $ZIP_NAME."
-  fi
+  unzip -j "$BIN_ZIP" "android-${ARCH#android_}/${BIN_PATH##*/}" -d "$BIN_DIR" \
+    || { rm -f "$BIN_ZIP"; abort "❌ Unzip failed."; }
 
-  [ ! -f "$BIN_PATH" ] && abort "❌ dnscrypt-proxy binary missing after extraction."
-
-  chmod -R 755 "$BIN_DIR"
+  [ -f "$BIN_PATH" ] || abort "❌ dnscrypt-proxy missing after unzip."
+  chmod 755 "$BIN_PATH"
   rm -f "$BIN_ZIP"
 
   ui_print "✅ dnscrypt-proxy $VERSION installed successfully."
