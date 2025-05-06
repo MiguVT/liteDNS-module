@@ -1,0 +1,30 @@
+name: Build and Upload Module
+
+on:
+  push:
+    branches:
+      - dev
+      - prod
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set artifact name
+      id: artifact
+      run: echo "zip_name=liteDNS-${{ github.ref_name }}-${{ github.sha.substring(0, 7) }}.zip" >> $GITHUB_OUTPUT
+
+    - name: Create ZIP
+      working-directory: liteDNS
+      run: |
+        set -e
+        zip -r -9 "../${{ steps.artifact.outputs.zip_name }}" .
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ steps.artifact.outputs.zip_name }}
+        path: ${{ steps.artifact.outputs.zip_name }}
