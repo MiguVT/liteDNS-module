@@ -103,7 +103,6 @@ FAILSAFE_FALLBACK=1
 ENABLE_IPV6=1
 EOF
 
-
 # ─────────────────────────────────────────────────────────────
 # 🌐 Download & setup dnscrypt-proxy
 if [ "$ENABLE_DOH" = "1" ]; then
