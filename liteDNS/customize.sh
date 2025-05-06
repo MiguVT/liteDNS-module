@@ -10,24 +10,6 @@ CONF_FILE="$MODDIR/dnscrypt-proxy.toml"
 API_URL="https://api.github.com/repos/DNSCrypt/dnscrypt-proxy/releases/latest"
 
 # ─────────────────────────────────────────────────────────────
-# 🛠️ Config file check
-if [ -f "$CONFIG" ]; then
-  ui_print "⚙️ Existing config.sh detected."
-  ui_print "If you're simply updating liteDNS, press Volume - (NO)."
-  ui_print "To reset and reconfigure DoH, press Volume + (YES)."
-  chooseport 443
-  OVERWRITE=$?
-
-  if [ "$OVERWRITE" = "0" ]; then
-    ui_print "🗑️ Removing old config..."
-    rm -f "$CONFIG"
-  else
-    ui_print "✅ Keeping existing config. Skipping reconfiguration."
-    exit 0
-  fi
-fi
-
-# ─────────────────────────────────────────────────────────────
 # 🔍 Detect architecture
 ABI=$(getprop ro.product.cpu.abi)
 case "$ABI" in
@@ -75,6 +57,35 @@ detect_keys() {
     sleep 0.1
   done
 }
+
+# ─────────────────────────────────────────────────────────────
+# 🛠️ Existing config.sh handling
+if [ -f "$CONFIG" ]; then
+  ui_print "⚙️ Existing config.sh detected."
+
+  # If in recovery, let the user choose whether to reset it:
+  if [ -d /cache/recovery ] && command -v getevent >/dev/null 2>&1; then
+    ui_print "Press VOL+ to reset config, VOL- to keep it."
+    detect_keys
+    case $? in
+      0)
+        ui_print "🗑️ Resetting config.sh..."
+        rm -f "$CONFIG"
+        ;;
+      1)
+        ui_print "✅ Keeping existing config; skipping reconfiguration."
+        exit 0
+        ;;
+      *)
+        ui_print "⚠️ No key press: defaulting to keep config."
+        exit 0
+        ;;
+    esac
+  else
+    ui_print "⚠️ Non-recovery install: keeping existing config."
+    exit 0
+  fi
+fi
 
 # ─────────────────────────────────────────────────────────────
 # 🔐 DoH prompt
