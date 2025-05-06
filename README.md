@@ -110,5 +110,5 @@ Logs rotate at each boot (`.bak` backup).
 
 ## 📜 License & Credits
 
-* **liteDNS** is MIT-licensed.
+* **liteDNS** is licensed under the GPLv3.
 * `dnscrypt-proxy` is maintained by [jedisct1](https://github.com/jedisct1/dnscrypt-proxy) under the ISC license.

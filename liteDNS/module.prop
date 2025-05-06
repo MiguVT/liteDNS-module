@@ -1,6 +1,6 @@
 id=liteDNS
-name=liteDNS - Lightweight DNS Setter
+name=liteDNS – Lightweight DNS Setter
 version=v0.0.2-dev
-versionCode=0
-author=MiguVT
+versionCode=2
+author=Yara (aka. MiguVT)
 description=Custom DNS module compatible with KernelSU & Magisk
