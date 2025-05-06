@@ -1,46 +1,92 @@
 # liteDNS
 
-**liteDNS** is a lightweight DNS configuration module for rooted Android devices using either **KernelSU** or **Magisk**.  
-It applies custom DNS settings during early boot using `resetprop`, `system.prop`, and interface detection.
+> 🧠 A systemless, root-safe DNS configuration module for Android devices using KernelSU or Magisk.
+
+**liteDNS** is a lightweight DNS setter that applies custom system DNS properties early at boot time using `resetprop`, `system.prop`, and interface-based detection.
+
+Designed to be **clean, fast, and invisible**, it avoids background processes, overlays, and root detection issues.
+
+---
 
 ## ✅ Features
 
-- Fully compatible with both Magisk and KernelSU environments
-- Compatible with KernelSU’s OverlayFS and BusyBox environment
-- Systemless DNS configuration (no /system writes)
-- Safe `post-fs-data` application with fallback
-- Clean configuration via `config.sh`
-- No background daemons or runtime overhead
+- ⚙️ **Full support for KernelSU and Magisk**
+- 📦 Uses KernelSU’s **OverlayFS** and **BusyBox** environment
+- 📁 Systemless — no modifications to `/system`, `/vendor`, or `/product`
+- 🧼 Clean configuration via `config.sh`
+- 🚫 No background daemons, services, or overlays
+- 🔒 Root-safe: no impact on SafetyNet, Play Integrity or banking apps
 
-## 🔧 Installation
+---
 
-1. Flash via KernelSU or Magisk Manager.  
-   You're done if you want to use Cloudflare DNS by default.
-2. To customize, edit `/data/adb/modules/liteDNS/config.sh`.
-3. Reboot your device.
+## 📥 Installation
 
-## 🔐 Security & Root Detection
+1. Flash the module via **KernelSU Manager** or **Magisk Manager**.
+2. (Optional) Customize your DNS settings by editing:
 
-`liteDNS` is designed to be fully compatible with root-sensitive apps and does **not trigger detection mechanisms** such as SafetyNet, Play Integrity, or banking app checks.
+   ```bash
+   /data/adb/modules/liteDNS/config.sh
+   ```
 
-It strictly modifies **non-sensitive system properties** (`net.dns1`, `net.dns2`, etc.) in a systemless manner and does **not**:
+3. Reboot your device. That’s it!
+
+By default, liteDNS applies **Cloudflare DNS (1.1.1.1 / 1.0.0.1)** if no config is changed.
+
+---
+
+## 🔐 Root Detection Compatibility
+
+> ✨ Works out of the box with SafetyNet, Play Integrity, and root-sensitive apps.
+
+liteDNS only modifies **non-sensitive system properties** like:
+
+```bash
+net.dns1=1.1.1.1
+net.dns2=1.0.0.1
+```
+
+It does **not**:
 
 - Hook into Zygisk or inject native code
-- Modify or replace files in `/system`, `/vendor`, or `/product`
+- Modify protected system partitions
 - Change SELinux contexts or policies
-- Include background services, binaries, or overlays
-- Spoof root status or interfere with detection frameworks
+- Add overlays or persistent processes
+- Spoof root status or affect DenyList/App Isolation
 
-As a result, `liteDNS` poses **no risk to root concealment** when used alongside Magisk’s DenyList or KernelSU’s app isolation features.
+You can verify this using tools like **Play Integrity Checker**, **RootBeer**, or your favorite banking app.
 
-You can verify its safety using tools like **Play Integrity Checker**, **RootBeer**, or directly with sensitive apps.
+---
 
-## ⚠️ Notes for Developers
+## 🛠️ Developer Notes
 
-- Do **not** use `setprop` in `post-fs-data.sh` under KernelSU – it may freeze boot.
-- Always use `resetprop -n` in early boot stages.
-- Always verify compatibility with the current versions of KernelSU and Magisk during development.
+- ❌ Avoid using `setprop` in `post-fs-data.sh` with KernelSU — it can **freeze boot**.
+- ✅ Use `resetprop -n` to set properties safely at early boot.
+- 🔄 Always validate compatibility against the current **Magisk** and **KernelSU** versions.
+- 🧪 For advanced users: customize interfaces, fallback behavior and more via `config.sh`.
 
-## 🔄 Uninstall
+---
 
-Remove the module via your root manager, or create a `remove` file inside the module folder and reboot.
+## 🧼 Uninstallation
+
+You can:
+
+- Remove the module through KernelSU or Magisk Manager
+- Or: create a `remove` file in the module folder:
+
+  ```bash
+  /data/adb/modules/liteDNS/remove
+  ```
+
+Then reboot. Done.
+
+---
+
+## 💚 Contributing / Feedback
+
+liteDNS is a minimalistic project, but feedback, improvements, and pull requests are always welcome.
+
+---
+
+## 📄 License
+
+MIT — do whatever you want, just don’t break things for others.
