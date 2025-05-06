@@ -51,21 +51,32 @@ for cmd in curl unzip; do
 done
 
 # ─────────────────────────────────────────────────────────────
-# 🔉 Volume‐key detection (10s timeout)
+# 🔉 Detect a single VOL+ or VOL– press (10 s timeout)
 detect_vol_key() {
-  ui_print "Press VOL+ for YES or VOL- for NO (10s)…"
-  SECONDS=0
-  while [ $SECONDS -lt 10 ]; do
+  ui_print "You have 10 seconds to press a volume key."
+  local start ts ev now line
+
+  start=$(date +%s)
+  while :; do
+    # Loop through all event devices
     for ev in /dev/input/event*; do
-      getevent -lc 1 "$ev" 2>/dev/null | while IFS= read -r line; do
-        case "$line" in
-          *KEY_VOLUMEUP*1) return 0 ;;   # VOL+ → yes
-          *KEY_VOLUMEDOWN*1) return 1 ;; # VOL- → no
-        esac
-      done
+      # Grab exactly one input event from this device
+      if getevent -lc 1 "$ev" 2>/dev/null | grep -q "KEY_VOLUMEUP.*1"; then
+        return 0
+      fi
+      if getevent -lc 1 "$ev" 2>/dev/null | grep -q "KEY_VOLUMEDOWN.*1"; then
+        return 1
+      fi
     done
+
+    # Timeout check
+    now=$(date +%s)
+    if (( now - start >= 10 )); then
+      return 2
+    fi
+
+    sleep 0.1
   done
-  return 2  # timeout
 }
 
 # ─────────────────────────────────────────────────────────────
