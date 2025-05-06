@@ -52,29 +52,26 @@ done
 
 # ─────────────────────────────────────────────────────────────
 # 🔉 Detect a single VOL+ or VOL– press (10 s timeout)
-detect_vol_key() {
-  ui_print "You have 10 seconds to press a volume key."
-  local start ts ev now line
-
+detect_keys() {
+  local start ev now
   start=$(date +%s)
+
+  ui_print "Press VOL+ for YES or VOL- for NO (10s)…"
   while :; do
-    # Loop through all event devices
     for ev in /dev/input/event*; do
-      # Grab exactly one input event from this device
-      if getevent -lc 1 "$ev" 2>/dev/null | grep -q "KEY_VOLUMEUP.*1"; then
-        return 0
+      # read exactly one event; look for key-down
+      if getevent -lqn -c1 "$ev" 2>/dev/null \
+         | grep -q 'KEY_VOLUMEUP.*DOWN'; then
+        return 0   # VOL+ → yes
       fi
-      if getevent -lc 1 "$ev" 2>/dev/null | grep -q "KEY_VOLUMEDOWN.*1"; then
-        return 1
+      if getevent -lqn -c1 "$ev" 2>/dev/null \
+         | grep -q 'KEY_VOLUMEDOWN.*DOWN'; then
+        return 1   # VOL- → no
       fi
     done
 
-    # Timeout check
     now=$(date +%s)
-    if (( now - start >= 10 )); then
-      return 2
-    fi
-
+    (( now - start >= 10 )) && return 2
     sleep 0.1
   done
 }
@@ -82,31 +79,30 @@ detect_vol_key() {
 # ─────────────────────────────────────────────────────────────
 # 🔐 DoH prompt
 ui_print "🛡️ liteDNS DoH Integration"
-ui_print "Would you like to enable DNS-over-HTTPS using dnscrypt-proxy?"
-ui_print "    [VOL+] Yes (recommended)"
-ui_print "    [VOL-] No"
+ui_print "Would you like to enable DNS-over-HTTPS via dnscrypt-proxy?"
 
-detect_vol_key
+detect_keys
 CHOICE=$?
 
-if [ "$CHOICE" = 0 ]; then
-  ui_print "✔️ DoH installation selected."
+if [ "$CHOICE" -eq 0 ]; then
+  ui_print "✔️ You pressed VOL+. Enabling DoH."
   ENABLE_DOH=1
-elif [ "$CHOICE" = 1 ]; then
-  ui_print "❌ DoH skipped by user."
+elif [ "$CHOICE" -eq 1 ]; then
+  ui_print "❌ You pressed VOL–. Skipping DoH."
   ENABLE_DOH=0
 else
   ui_print "⚠️ No key press detected. Defaulting to YES."
   ENABLE_DOH=1
 fi
 
-# Save config
+# Save to config
 cat > "$CONFIG" <<EOF
 ENABLE_DOH=$ENABLE_DOH
 VERBOSE_LOG=1
 FAILSAFE_FALLBACK=1
 ENABLE_IPV6=1
 EOF
+
 
 # ─────────────────────────────────────────────────────────────
 # 🌐 Download & setup dnscrypt-proxy
