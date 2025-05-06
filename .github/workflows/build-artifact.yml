@@ -15,7 +15,7 @@ jobs:
 
     - name: Set artifact name
       id: artifact
-      run: echo "zip_name=liteDNS-${{ github.ref_name }}-${{ github.sha.substring(0, 7) }}.zip" >> $GITHUB_OUTPUT
+      run: echo "zip_name=liteDNS-${{ github.ref_name }}-${{ github.sha[0:7] }}.zip" >> $GITHUB_OUTPUT
 
     - name: Create ZIP
       working-directory: liteDNS
