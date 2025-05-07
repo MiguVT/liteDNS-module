@@ -90,8 +90,8 @@ if [ "$BRANCH" = "dev" ]; then
 fi
 
 # ─────────────────────────────────────────────────────────────
-# 5️⃣ If config differs from template, offer reset vs keep
-if ! cmp -s "$TEMPLATE" "$CONFIG"; then
+# 5️⃣ If config found, offer reset vs keep
+if [ -f "$CONFIG" ]; then
   ui_print "⚙️ Existing config detected."
   ui_print "🔼 VOL+ → reset, 🔽 VOL- → keep"
   choose_option " Make a choice:"
