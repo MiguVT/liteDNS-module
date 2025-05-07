@@ -18,6 +18,7 @@ if [ "$BRANCH" = "dev" ]; then
   ui_print "🔍 Module files at $MODDIR:"
   ls -1 "$MODDIR" >&2 | while read f; do ui_print "  • $f"; done
 fi
+
 # ─────────────────────────────────────────────────────────────
 # 1️⃣ Bootstrap config.sh from template on first install
 if [ ! -f "$CONFIG" ]; then
