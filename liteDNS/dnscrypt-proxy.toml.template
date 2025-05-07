@@ -1,0 +1,26 @@
+# liteDNS dnscrypt-proxy template
+# This file is copied to dnscrypt-proxy.toml on first boot by service.sh
+# Lines marked <--- are overwritten by service.sh based on your config.sh
+
+## Where dnscrypt-proxy listens for queries.
+listen_addresses = ['127.0.0.1:53']
+
+## Which DoH endpoint to use.
+## service.sh will replace this entire line with your DOH_SERVER
+doh_servers = ['https://cloudflare-dns.com/dns-query']
+
+## IPv4/IPv6 toggles
+ipv4_servers = true
+ipv6_servers = true    # <--- overwritten with ENABLE_IPV6 from config.sh
+
+## Standard privacy/security settings
+require_dnssec    = true
+require_nolog     = true
+require_nofilter  = true
+
+dnscrypt_servers  = false
+odoh_servers      = false
+
+max_clients       = 250
+keepalive         = 30
+log_level         = 2

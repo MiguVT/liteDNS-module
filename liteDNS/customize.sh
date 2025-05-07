@@ -11,6 +11,13 @@ CONF_FILE="$MODDIR/dnscrypt-proxy.toml"
 API_URL="https://api.github.com/repos/DNSCrypt/dnscrypt-proxy/releases/latest"
 TIMEOUT=10
 BRANCH="dev"
+CONF_DELETED=1
+
+# ─────────────────────────────────────────────────────────────
+# 🔨 Simple functions
+newline(n) {
+  for i in $(seq 1 $n); do echo ""; done
+}
 
 # ─────────────────────────────────────────────────────────────
 # 0️⃣ Init Debug (Not for production only for dev branch)
@@ -93,9 +100,11 @@ if ! cmp -s "$TEMPLATE" "$CONFIG"; then
       ;;
     1)
       ui_print "✅ Keeping existing config."
+      CONF_DELETED=0
       ;;
     *)
       ui_print "⚠️ No input: keeping config."
+      CONF_DELETED=0
       ;;
   esac
 fi
@@ -104,27 +113,32 @@ if [ "$BRANCH" = "dev" ]; then
 fi
 
 # ─────────────────────────────────────────────────────────────
-# 6️⃣ Prompt DoH enable/disable
-ui_print "🛡️ liteDNS DoH Setup"
-ui_print "🔼 VOL+ → enable DoH, 🔽 VOL- → disable"
-choose_option ""
-case $? in
-  0)  
-    ui_print "✔️ Enabling DoH."
-    CHOICE=1
-    ;;
-  1)  
-    ui_print "❌ Disabling DoH."
-    CHOICE=0
-    ;;
-  *)
-    ui_print "⚠️ Timeout: enabling DoH by default."
-    CHOICE=1
-    ;;
-esac
+# 6️⃣ Prompt DoH enable/disable (if config deleted in step 5)
+if [ "$CONF_DELETED" -eq 1 ]; then
+  newline 4
+  ui_print "🛡️ liteDNS DoH Setup"
+  ui_print "🔼 VOL+ → enable DoH (recommended)"
+  ui_print "🔽 VOL- → disable DoH"
+  choose_option ""
+  case $? in
+    0)  
+      ui_print "✔️ Enabling DoH."
+      CHOICE=1
+      ;;
+    1)  
+      ui_print "❌ Disabling DoH."
+      CHOICE=0
+      ;;
+    *)
+      ui_print "⚠️ Timeout: enabling DoH by default."
+      CHOICE=1
+      ;;
+  esac
+fi
 if [ "$BRANCH" = "dev" ]; then
   ui_print "ℹ️ Step 6 success"
 fi
+newline 2
 
 # ─────────────────────────────────────────────────────────────
 # 7️⃣ Persist only the ENABLE_DOH flag in config.sh
