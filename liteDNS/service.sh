@@ -3,7 +3,7 @@
 
 # ─────────────────────────────────────────────────────────────
 # 📁 Module paths
-MODDIR="$MODPATH"
+MODDIR="${0%/*}"
 TEMPLATE_CONF="$MODDIR/dnscrypt-proxy.toml.template"
 TARGET_CONF="$MODDIR/dnscrypt-proxy.toml"
 CONFIG="$MODDIR/config.sh"

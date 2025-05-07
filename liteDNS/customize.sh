@@ -187,7 +187,23 @@ if [ "$BRANCH" = "dev" ]; then
 fi
 
 # ─────────────────────────────────────────────────────────────
-# 9️⃣ Done
+# 9️⃣ Ensure scripts and binaries are executable
+for script in "${MODDIR}/service.sh" "${MODDIR}/customize.sh"; do
+  [ -f "$script" ] && chmod +x "$script" \
+    || ui_print "⚠️ Could not chmod +x $script (Step 9)"
+done
+
+if [ -f "$BIN_PATH" ]; then
+  chmod +x "$BIN_PATH" \
+    || ui_print "⚠️ Could not chmod +x $BIN_PATH (Step 9)"
+fi
+
+if [ "$BRANCH" = "dev" ]; then
+  ui_print "ℹ️ Step 9 success"
+fi
+
+# ─────────────────────────────────────────────────────────────
+# 🥳 Done
 ui_print ""
 ui_print "✅ Configuration saved to config.sh."
 ui_print "🔄 Please reboot to apply changes."
