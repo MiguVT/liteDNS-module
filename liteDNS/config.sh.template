@@ -1,0 +1,33 @@
+#!/system/bin/sh
+# liteDNS configuration template
+# Copy this to config.sh on first install.
+#
+# VERSION tag – bump when we add new options or a major change (like dnscrypt-proxy update)
+VERSION="003"
+
+# ─────────────────────────────────────────────────────────────
+# Enable DNS-over-HTTPS (DoH) via dnscrypt-proxy
+# 1 = enabled, 0 = disabled
+ENABLE_DOH=1
+
+# Verbose logging
+# 1 = log detailed events to service.log, 0 = silent
+VERBOSE_LOG=1
+
+# Failsafe IPv4 fallback
+# If DoH fails to start, revert to DNS1/DNS2
+# 1 = fallback allowed, 0 = stay on localhost (DoH-only)
+FAILSAFE_FALLBACK=1
+
+# IPv6 DNS support
+# 1 = apply IPv6 nameservers, 0 = IPv4 only
+ENABLE_IPV6=1
+
+# ─────────────────────────────────────────────────────────────
+# Upstream DNS servers (Cloudflare defaults)
+DNS1=1.1.1.1
+DNS2=1.0.0.1
+
+# Upstream IPv6 DNS (Cloudflare)
+DNS6_1=2606:4700:4700::1111
+DNS6_2=2606:4700:4700::1001

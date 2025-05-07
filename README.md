@@ -19,12 +19,11 @@
 
 ## 📦 Installation
 
-1. **Flash** the `liteDNS.zip` installer via Magisk Manager or KernelSU manager.
-2. **Interact** when prompted:
-
+1. Flash `liteDNS.zip` via Magisk or KernelSU Manager.
+2. First-time run will copy `config.sh.template` → `config.sh` and prompt:
    * Overwrite existing config? (NO to keep, YES to reset)
    * Enable DoH? (YES recommended)
-3. **Reboot**. The module auto‐detects CPU architecture, downloads `dnscrypt-proxy`, and configures DNS.
+3. Reboot.
 
 ---
 
@@ -57,7 +56,7 @@ DNS6_2=2606:4700:4700::1001
 **Notes:**
 
 * Editing these variables and **rebooting** is all that’s required.
-* Removing `config.sh` and reflashing triggers the interactive installer again.
+* Reflashing give you the option to launch the interactive config wizard again.
 
 ---
 

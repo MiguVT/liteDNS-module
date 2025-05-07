@@ -2,172 +2,140 @@
 # customize.sh for liteDNS – DoH setup with dynamic release fetching
 
 MODDIR=${0%/*}
+TEMPLATE="$MODDIR/config.sh.template"
 CONFIG="$MODDIR/config.sh"
 BIN_DIR="$MODDIR/bin"
 BIN_ZIP="$BIN_DIR/dnscrypt-proxy.zip"
 BIN_PATH="$BIN_DIR/dnscrypt-proxy"
 CONF_FILE="$MODDIR/dnscrypt-proxy.toml"
 API_URL="https://api.github.com/repos/DNSCrypt/dnscrypt-proxy/releases/latest"
+TIMEOUT=10
 
 # ─────────────────────────────────────────────────────────────
-# 🔍 Detect architecture
+# 1️⃣ Bootstrap config.sh from template on first install
+if [ ! -f "$CONFIG" ]; then
+  cp "$TEMPLATE" "$CONFIG" \
+    || abort "❌ Could not copy config.sh.template → config.sh"
+  chmod 644 "$CONFIG"
+fi
+
+# ─────────────────────────────────────────────────────────────
+# 2️⃣ Detect CPU architecture
 ABI=$(getprop ro.product.cpu.abi)
 case "$ABI" in
-  arm64-v8a) ARCH="android_arm64" ;;
-  armeabi-v7a) ARCH="android_arm" ;;
-  x86) ARCH="android_i386" ;;
-  x86_64) ARCH="android_x86_64" ;;
+  arm64-v8a)   ARCH="android_arm64"   ;;
+  armeabi-v7a) ARCH="android_arm"      ;;
+  x86)         ARCH="android_i386"     ;;
+  x86_64)      ARCH="android_x86_64"   ;;
   *)
-    ui_print "⚠️ Unknown architecture: $ABI"
-    ui_print "Falling back to android_arm64 (most compatible)."
+    ui_print "⚠️ Unknown ABI: $ABI → defaulting to android_arm64"
     ARCH="android_arm64"
     ;;
 esac
-ui_print "📦 Detected architecture: $ABI → $ARCH"
+ui_print "📦 ABI: $ABI → $ARCH"
 
-# 🔎 Ensure required tools exist
-for cmd in curl unzip; do
-  if ! command -v $cmd >/dev/null 2>&1; then
-    abort "❌ Required command '$cmd' is missing. Aborting."
-  fi
+# ─────────────────────────────────────────────────────────────
+# 3️⃣ Ensure required binaries are present
+for cmd in curl unzip getevent timeout; do
+  command -v $cmd >/dev/null 2>&1 || abort "❌ '$cmd' is required, but missing."
 done
 
 # ─────────────────────────────────────────────────────────────
-# 🔉 Detect a single VOL+ or VOL– press (10 s timeout)
-detect_keys() {
-  local start ev now
-  start=$(date +%s)
-
-  ui_print "Press VOL+ for YES or VOL- for NO (10s)…"
+# 4️⃣ Volume-key prompt using timeout + getevent
+choose_option(){
+  local prompt="$1"
+  ui_print "$prompt"
+  ui_print " waiting up to ${TIMEOUT}s…"
   while :; do
-    for ev in /dev/input/event*; do
-      # read exactly one event; look for key-down
-      if getevent -lqn -c1 "$ev" 2>/dev/null \
-         | grep -q 'KEY_VOLUMEUP.*DOWN'; then
-        return 0   # VOL+ → yes
-      fi
-      if getevent -lqn -c1 "$ev" 2>/dev/null \
-         | grep -q 'KEY_VOLUMEDOWN.*DOWN'; then
-        return 1   # VOL- → no
-      fi
-    done
-
-    now=$(date +%s)
-    (( now - start >= 10 )) && return 2
-    sleep 0.1
+    event=$(timeout ${TIMEOUT} getevent -qlc 1 2>/dev/null)
+    code=$?
+    # timeout returns 124 (toybox) or 143 (BusyBox)
+    if [ $code -eq 124 ] || [ $code -eq 143 ]; then
+      return 2
+    fi
+    echo "$event" | grep -q "KEY_VOLUMEUP.*DOWN"    && return 0
+    echo "$event" | grep -q "KEY_VOLUMEDOWN.*DOWN"  && return 1
   done
 }
 
 # ─────────────────────────────────────────────────────────────
-# 🛠️ Existing config.sh handling
-if [ -f "$CONFIG" ]; then
-  ui_print "⚙️ Existing config.sh detected."
-
-  # If in recovery, let the user choose whether to reset it:
-  if [ -d /cache/recovery ] && command -v getevent >/dev/null 2>&1; then
-    ui_print "Press VOL+ to reset config, VOL- to keep it."
-    detect_keys
-    case $? in
-      0)
-        ui_print "🗑️ Resetting config.sh..."
-        rm -f "$CONFIG"
-        ;;
-      1)
-        ui_print "✅ Keeping existing config; skipping reconfiguration."
-        exit 0
-        ;;
-      *)
-        ui_print "⚠️ No key press: defaulting to keep config."
-        exit 0
-        ;;
-    esac
-  else
-    ui_print "⚠️ Non-recovery install: keeping existing config."
-    exit 0
-  fi
+# 5️⃣ If config differs from template, offer reset vs keep
+if ! cmp -s "$TEMPLATE" "$CONFIG"; then
+  ui_print "⚙️ Existing config detected."
+  ui_print "🔼 VOL+ → reset, 🔽 VOL- → keep"
+  choose_option " Make a choice:"
+  case $? in
+    0)
+      ui_print "🗑️ Resetting config…"
+      cp "$TEMPLATE" "$CONFIG" \
+        || abort "❌ Failed to reset config.sh"
+      ;;
+    1)
+      ui_print "✅ Keeping existing config."
+      ;;
+    *)
+      ui_print "⚠️ No input: keeping config."
+      ;;
+  esac
 fi
 
 # ─────────────────────────────────────────────────────────────
-# 🔐 DoH prompt
-ui_print "🛡️ liteDNS DoH Integration"
-ui_print "Would you like to enable DNS-over-HTTPS via dnscrypt-proxy?"
-
-detect_keys
-CHOICE=$?
-
-if [ "$CHOICE" -eq 0 ]; then
-  ui_print "✔️ You pressed VOL+. Enabling DoH."
-  ENABLE_DOH=1
-elif [ "$CHOICE" -eq 1 ]; then
-  ui_print "❌ You pressed VOL–. Skipping DoH."
-  ENABLE_DOH=0
-else
-  ui_print "⚠️ No key press detected. Defaulting to YES."
-  ENABLE_DOH=1
-fi
-
-# Save to config
-cat > "$CONFIG" <<EOF
-ENABLE_DOH=$ENABLE_DOH
-VERBOSE_LOG=1
-FAILSAFE_FALLBACK=1
-ENABLE_IPV6=1
-EOF
+# 6️⃣ Prompt DoH enable/disable
+ui_print "🛡️ liteDNS DoH Setup"
+ui_print "🔼 VOL+ → enable DoH, 🔽 VOL- → disable"
+choose_option ""
+case $? in
+  0)  
+    ui_print "✔️ Enabling DoH."
+    CHOICE=1
+    ;;
+  1)  
+    ui_print "❌ Disabling DoH."
+    CHOICE=0
+    ;;
+  *)
+    ui_print "⚠️ Timeout: enabling DoH by default."
+    CHOICE=1
+    ;;
+esac
 
 # ─────────────────────────────────────────────────────────────
-# 🌐 Download & setup dnscrypt-proxy
-if [ "$ENABLE_DOH" = "1" ]; then
+# 7️⃣ Persist only the ENABLE_DOH flag in config.sh
+sed -i "s|^ENABLE_DOH=.*|ENABLE_DOH=$CHOICE|" "$CONFIG" \
+  || abort "❌ Failed to update ENABLE_DOH in config.sh"
 
-  # ───── Internet check ─────
-  ui_print "🔌 Checking network…"
-  if ! curl -fsSL --head https://api.github.com >/dev/null 2>&1; then
-    abort "❌ No Internet connection detected. Please ensure network and retry."
-  fi
+# ─────────────────────────────────────────────────────────────
+# 8️⃣ Download & install dnscrypt-proxy if opted-in
+if [ "$CHOICE" -eq 1 ]; then
+  ui_print "🔌 Checking internet connectivity…"
+  curl -fsSL --head https://api.github.com >/dev/null 2>&1 \
+    || abort "❌ No Internet connection."
 
-  # ───── Download dnscrypt-proxy ─────
-  ui_print "🌐 Fetching latest dnscrypt-proxy version..."
-
-  VERSION=$(curl -fsSL "$API_URL" | grep -o '"tag_name": *"[^"]*"' | head -n1 | cut -d'"' -f4)
-  [ -z "$VERSION" ] && abort "❌ Failed to fetch version from GitHub."
+  ui_print "🌐 Fetching latest dnscrypt-proxy version…"
+  VERSION=$(curl -fsSL "$API_URL" \
+    | grep -o '"tag_name":[^"]*"[^\"]*"' \
+    | head -n1 | cut -d\" -f4)
+  [ -z "$VERSION" ] && abort "❌ Failed to fetch version."
 
   ZIP_NAME="dnscrypt-proxy-${ARCH}-${VERSION}.zip"
-  ZIP_URL="https://github.com/DNSCrypt/dnscrypt-proxy/releases/download/${VERSION}/${ZIP_NAME}"
-
-  ui_print "⬇️ Downloading: $ZIP_NAME"
-
+  ui_print "⬇️ Downloading $ZIP_NAME"
   mkdir -p "$BIN_DIR"
-  curl -fsSL -o "$BIN_ZIP" "$ZIP_URL" \
+  curl -fsSL -o "$BIN_ZIP" \
+    "https://github.com/DNSCrypt/dnscrypt-proxy/releases/download/${VERSION}/${ZIP_NAME}" \
     || abort "❌ Download failed."
 
-  unzip -j "$BIN_ZIP" "android-${ARCH#android_}/${BIN_PATH##*/}" -d "$BIN_DIR" \
+  unzip -j "$BIN_ZIP" \
+    "android-${ARCH#android_}/${BIN_PATH##*/}" -d "$BIN_DIR" \
     || { rm -f "$BIN_ZIP"; abort "❌ Unzip failed."; }
 
-  [ -f "$BIN_PATH" ] || abort "❌ dnscrypt-proxy missing after unzip."
+  [ -f "$BIN_PATH" ] || abort "❌ dnscrypt-proxy binary missing!"
   chmod 755 "$BIN_PATH"
   rm -f "$BIN_ZIP"
-
   ui_print "✅ dnscrypt-proxy $VERSION installed successfully."
-
-  if [ ! -f "$CONF_FILE" ]; then
-    ui_print "🧩 Creating default configuration (dnscrypt-proxy.toml)..."
-
-    cat <<EOF > "$CONF_FILE"
-listen_addresses = ['127.0.0.1:53']
-server_names = ['cloudflare']
-ipv4_servers = true
-require_dnssec = true
-require_nolog = true
-require_nofilter = true
-dnscrypt_servers = false
-doh_servers = true
-odoh_servers = false
-fallback_resolvers = ['9.9.9.9:53', '1.1.1.1:53']
-max_clients = 250
-keepalive = 30
-log_level = 2
-EOF
-
-    chmod 644 "$CONF_FILE"
-    ui_print "✅ Default config created."
-  fi
 fi
+
+# ─────────────────────────────────────────────────────────────
+# 9️⃣ Done
+ui_print ""
+ui_print "✅ Configuration saved to config.sh."
+ui_print "🔄 Please reboot to apply changes."
