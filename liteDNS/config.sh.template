@@ -24,10 +24,10 @@ WIFI_CUSTOM_DNS=1
 #   1 = enabled, 0 = disabled
 ENABLE_DOH=1
 
-# Which DoH server to use:
-#   • Full URL:  https://1.1.1.1/dns-query
-#   • Named:     cloudflare, google, quad9, etc.
-DOH_SERVER='https://cloudflare-dns.com/dns-query'
+# Which DoH server(s) to use:
+#   • Use provider names from the official dnscrypt-proxy public-resolvers list
+#   • Multiple can be separated by commas (e.g., cloudflare,quad9,google)
+DOH_SERVERS_NAME='cloudflare'
 
 # Failsafe IPv4 fallback if DoH fails to start
 #   1 = revert to DNS1/DNS2, 0 = stay on localhost
