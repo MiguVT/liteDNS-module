@@ -15,8 +15,11 @@ CONF_DELETED=1
 
 # ─────────────────────────────────────────────────────────────
 # 🔨 Simple functions
-newline(n) {
-  for i in $(seq 1 $n); do echo ""; done
+newline(){
+  local n="$1"
+  for i in $(seq 1 "$n"); do
+    echo
+  done
 }
 
 # ─────────────────────────────────────────────────────────────
@@ -142,8 +145,10 @@ newline 2
 
 # ─────────────────────────────────────────────────────────────
 # 7️⃣ Persist only the ENABLE_DOH flag in config.sh
-sed -i "s|^ENABLE_DOH=.*|ENABLE_DOH=$CHOICE|" "$CONFIG" \
-  || abort "❌ Failed to update ENABLE_DOH in config.sh (Step 7)"
+if [ "$CONF_DELETED" -eq 1 ]; then
+  sed -i "s|^ENABLE_DOH=.*|ENABLE_DOH=$CHOICE|" "$CONFIG" \
+    || abort "❌ Failed to update ENABLE_DOH in config.sh (Step 7)"
+fi
 if [ "$BRANCH" = "dev" ]; then
   ui_print "ℹ️ Step 7 success"
 fi
