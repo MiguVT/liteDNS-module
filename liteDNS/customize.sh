@@ -10,7 +10,14 @@ BIN_PATH="$BIN_DIR/dnscrypt-proxy"
 CONF_FILE="$MODDIR/dnscrypt-proxy.toml"
 API_URL="https://api.github.com/repos/DNSCrypt/dnscrypt-proxy/releases/latest"
 TIMEOUT=10
+BRANCH="dev"
 
+# ─────────────────────────────────────────────────────────────
+# 0️⃣ Init Debug (Not for production only for dev branch)
+if [ "$BRANCH" = "dev" ]; then
+  ui_print "🔍 Module files at $MODDIR:"
+  ls -1 "$MODDIR" >&2 | while read f; do ui_print "  • $f"; done
+fi
 # ─────────────────────────────────────────────────────────────
 # 1️⃣ Bootstrap config.sh from template on first install
 if [ ! -f "$CONFIG" ]; then
