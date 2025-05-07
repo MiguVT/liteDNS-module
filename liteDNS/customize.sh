@@ -1,7 +1,7 @@
 #!/system/bin/sh
 # customize.sh for liteDNS – DoH setup with dynamic release fetching
 
-MODDIR=${0%/*}
+MODDIR=$MODPATH
 TEMPLATE="$MODDIR/config.sh.template"
 CONFIG="$MODDIR/config.sh"
 BIN_DIR="$MODDIR/bin"
@@ -15,6 +15,7 @@ BRANCH="dev"
 # ─────────────────────────────────────────────────────────────
 # 0️⃣ Init Debug (Not for production only for dev branch)
 if [ "$BRANCH" = "dev" ]; then
+  ui_print "⚠️ You are in dev branch, please use with caution. If you are not a developer, please switch download the module from github release page."
   ui_print "🔍 Module files at $MODDIR:"
   ls -1 "$MODDIR" >&2 | while read f; do ui_print "  • $f"; done
 fi
@@ -23,8 +24,11 @@ fi
 # 1️⃣ Bootstrap config.sh from template on first install
 if [ ! -f "$CONFIG" ]; then
   cp "$TEMPLATE" "$CONFIG" \
-    || abort "❌ Could not copy config.sh.template → config.sh"
+    || abort "❌ Could not copy config.sh.template → config.sh (Step 1)"
   chmod 644 "$CONFIG"
+fi
+if [ "$BRANCH" = "dev" ]; then
+  ui_print "ℹ️ Step 1 success"
 fi
 
 # ─────────────────────────────────────────────────────────────
@@ -41,12 +45,18 @@ case "$ABI" in
     ;;
 esac
 ui_print "📦 ABI: $ABI → $ARCH"
+if [ "$BRANCH" = "dev" ]; then
+  ui_print "ℹ️ Step 2 success"
+fi
 
 # ─────────────────────────────────────────────────────────────
 # 3️⃣ Ensure required binaries are present
 for cmd in curl unzip getevent timeout; do
-  command -v $cmd >/dev/null 2>&1 || abort "❌ '$cmd' is required, but missing."
+  command -v $cmd >/dev/null 2>&1 || abort "❌ '$cmd' is required, but missing. (Step 3)"
 done
+if [ "$BRANCH" = "dev" ]; then
+  ui_print "ℹ️ Step 3 success"
+fi
 
 # ─────────────────────────────────────────────────────────────
 # 4️⃣ Volume-key prompt using timeout + getevent
@@ -65,6 +75,9 @@ choose_option(){
     echo "$event" | grep -q "KEY_VOLUMEDOWN.*DOWN"  && return 1
   done
 }
+if [ "$BRANCH" = "dev" ]; then
+  ui_print "ℹ️ Step 4 success"
+fi
 
 # ─────────────────────────────────────────────────────────────
 # 5️⃣ If config differs from template, offer reset vs keep
@@ -76,7 +89,7 @@ if ! cmp -s "$TEMPLATE" "$CONFIG"; then
     0)
       ui_print "🗑️ Resetting config…"
       cp "$TEMPLATE" "$CONFIG" \
-        || abort "❌ Failed to reset config.sh"
+        || abort "❌ Failed to reset config.sh (Step 5)"
       ;;
     1)
       ui_print "✅ Keeping existing config."
@@ -85,6 +98,9 @@ if ! cmp -s "$TEMPLATE" "$CONFIG"; then
       ui_print "⚠️ No input: keeping config."
       ;;
   esac
+fi
+if [ "$BRANCH" = "dev" ]; then
+  ui_print "ℹ️ Step 5 success"
 fi
 
 # ─────────────────────────────────────────────────────────────
@@ -106,40 +122,49 @@ case $? in
     CHOICE=1
     ;;
 esac
+if [ "$BRANCH" = "dev" ]; then
+  ui_print "ℹ️ Step 6 success"
+fi
 
 # ─────────────────────────────────────────────────────────────
 # 7️⃣ Persist only the ENABLE_DOH flag in config.sh
 sed -i "s|^ENABLE_DOH=.*|ENABLE_DOH=$CHOICE|" "$CONFIG" \
-  || abort "❌ Failed to update ENABLE_DOH in config.sh"
+  || abort "❌ Failed to update ENABLE_DOH in config.sh (Step 7)"
+if [ "$BRANCH" = "dev" ]; then
+  ui_print "ℹ️ Step 7 success"
+fi
 
 # ─────────────────────────────────────────────────────────────
 # 8️⃣ Download & install dnscrypt-proxy if opted-in
 if [ "$CHOICE" -eq 1 ]; then
   ui_print "🔌 Checking internet connectivity…"
   curl -fsSL --head https://api.github.com >/dev/null 2>&1 \
-    || abort "❌ No Internet connection."
+    || abort "❌ No Internet connection. (Step 8)"
 
   ui_print "🌐 Fetching latest dnscrypt-proxy version…"
   VERSION=$(curl -fsSL "$API_URL" \
     | grep -o '"tag_name":[^"]*"[^\"]*"' \
     | head -n1 | cut -d\" -f4)
-  [ -z "$VERSION" ] && abort "❌ Failed to fetch version."
+  [ -z "$VERSION" ] && abort "❌ Failed to fetch version. (Step 8)"
 
   ZIP_NAME="dnscrypt-proxy-${ARCH}-${VERSION}.zip"
   ui_print "⬇️ Downloading $ZIP_NAME"
   mkdir -p "$BIN_DIR"
   curl -fsSL -o "$BIN_ZIP" \
     "https://github.com/DNSCrypt/dnscrypt-proxy/releases/download/${VERSION}/${ZIP_NAME}" \
-    || abort "❌ Download failed."
+    || abort "❌ Download failed. (Step 8)"
 
   unzip -j "$BIN_ZIP" \
     "android-${ARCH#android_}/${BIN_PATH##*/}" -d "$BIN_DIR" \
-    || { rm -f "$BIN_ZIP"; abort "❌ Unzip failed."; }
+    || { rm -f "$BIN_ZIP"; abort "❌ Unzip failed. (Step 8)"; }
 
-  [ -f "$BIN_PATH" ] || abort "❌ dnscrypt-proxy binary missing!"
+  [ -f "$BIN_PATH" ] || abort "❌ dnscrypt-proxy binary missing! (Step 8)"
   chmod 755 "$BIN_PATH"
   rm -f "$BIN_ZIP"
   ui_print "✅ dnscrypt-proxy $VERSION installed successfully."
+fi
+if [ "$BRANCH" = "dev" ]; then
+  ui_print "ℹ️ Step 8 success"
 fi
 
 # ─────────────────────────────────────────────────────────────
