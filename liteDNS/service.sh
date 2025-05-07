@@ -3,7 +3,7 @@
 
 # ─────────────────────────────────────────────────────────────
 # 📁 Module paths
-MODDIR="$MODPATH"                             # use MODPATH for customize and Manager installs
+MODDIR="$MODPATH"
 TEMPLATE_CONF="$MODDIR/dnscrypt-proxy.toml.template"
 TARGET_CONF="$MODDIR/dnscrypt-proxy.toml"
 CONFIG="$MODDIR/config.sh"
@@ -45,6 +45,7 @@ abort() {
 : "${DNS2:=1.0.0.1}"
 : "${DNS6_1:=2606:4700:4700::1111}"
 : "${DNS6_2:=2606:4700:4700::1001}"
+: "${WIFI_CUSTOM_DNS:=1}"
 
 # ─────────────────────────────────────────────────────────────
 # 🔍 Choose prop tool
@@ -54,7 +55,7 @@ else
   PROPTOOL='setprop'
 fi
 
-log "service.sh started (DoH=$ENABLE_DOH, IPv6=$ENABLE_IPV6)"
+log "service.sh started (DoH=$ENABLE_DOH, IPv6=$ENABLE_IPV6, WIFI_CUSTOM_DNS=$WIFI_CUSTOM_DNS)"
 
 # ─────────────────────────────────────────────────────────────
 # 🛠 Prepare dnscrypt-proxy.toml from template if DoH enabled
@@ -66,14 +67,10 @@ if [ "$ENABLE_DOH" -eq 1 ]; then
   fi
   # patch ipv6_servers
   IPV6_FLAG=false; [ "$ENABLE_IPV6" -eq 1 ] && IPV6_FLAG=true
-  sed -i "s|^ipv6_servers *=.*|ipv6_servers = $IPV6_FLAG|" "$TARGET_CONF" \
-    || abort "Failed to update ipv6_servers"
+  sed -i "s|^ipv6_servers *=.*|ipv6_servers = $IPV6_FLAG|" "$TARGET_CONF" || abort "Failed to update ipv6_servers"
   # patch doh_servers
-  ESC_SERVER=
-  # escape slashes for sed
   ESC_SERVER=$(printf '%s' "$DOH_SERVER" | sed 's/[\/&]/\\&/g')
-  sed -i "s|^doh_servers *=.*|doh_servers = ['$ESC_SERVER']|" "$TARGET_CONF" \
-    || abort "Failed to update doh_servers"
+  sed -i "s|^doh_servers *=.*|doh_servers = ['$ESC_SERVER']|" "$TARGET_CONF" || abort "Failed to update doh_servers"
   log "Patched TOML → DOH=$DOH_SERVER, IPv6=$IPV6_FLAG"
 fi
 
@@ -103,15 +100,16 @@ start_doh() {
 }
 
 # ─────────────────────────────────────────────────────────────
-# 🌐 Apply DNS props to an interface\ apply_dns_iface() {
-  local iface="\$1"
-  \$PROPTOOL net.\$iface.dns1 "\$DNS1"
-  \$PROPTOOL net.\$iface.dns2 "\$DNS2"
-  if [ "\$ENABLE_IPV6" -eq 1 ]; then
-    \$PROPTOOL net.\$iface.dns3 "\$DNS6_1"
-    \$PROPTOOL net.\$iface.dns4 "\$DNS6_2"
+# 🌐 Apply DNS props to an interface
+apply_dns_iface() {
+  local iface="$1"
+  $PROPTOOL net.$iface.dns1 "$DNS1"
+  $PROPTOOL net.$iface.dns2 "$DNS2"
+  if [ "$ENABLE_IPV6" -eq 1 ]; then
+    $PROPTOOL net.$iface.dns3 "$DNS6_1"
+    $PROPTOOL net.$iface.dns4 "$DNS6_2"
   fi
-  log "Applied DNS to \$iface: \$DNS1/\$DNS2"
+  log "Applied DNS to $iface: $DNS1/$DNS2"
 }
 
 # ─────────────────────────────────────────────────────────────
@@ -120,24 +118,19 @@ start_doh() {
 if [ "$ENABLE_DOH" -eq 1 ]; then
   start_doh
 else
-  log "DoH not enabled: using \$DNS1/\$DNS2"
+  log "DoH not enabled: using $DNS1/$DNS2"
 fi
 
-# handle mobile interfaces\IFS=$'\n'
-for iface in \$(ls /sys/class/net 2>/dev/null | grep -E '^(rmnet|pdp|ppp)'); do
-  apply_dns_iface "\$iface"
+# handle mobile interfaces
+IFS=$'\n'
+for iface in $(ls /sys/class/net 2>/dev/null | grep -E '^(rmnet|pdp|ppp)'); do
+  apply_dns_iface "$iface"
 done
 unset IFS
 
-# global props
-\$PROPTOOL net.dns1 "$DNS1"
-\$PROPTOOL net.dns2 "$DNS2"
-log "Global DNS set to \$DNS1/\$DNS2"
-
-if [ "$ENABLE_IPV6" -eq 1 ]; then
-  \$PROPTOOL net.dns3 "$DNS6_1"
-  \$PROPTOOL net.dns4 "$DNS6_2"
-  log "Global IPv6 DNS set to \$DNS6_1/\$DNS6_2"
-fi
-
-log "service.sh completed successfully"
+# ───── Global DNS override (affects Wi-Fi)
+if [ "$WIFI_CUSTOM_DNS" -eq 1 ]; then
+  $PROPTOOL net.dns1 "$DNS1"
+  $PROPTOOL net.dns2 "$DNS2"
+  log "Global DNS set to $DNS1/$DNS2 (Wi-Fi overridden)"
+els

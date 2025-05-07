@@ -14,6 +14,11 @@ VERBOSE_LOG=1
 #   1 = enabled, 0 = IPv4 only
 ENABLE_IPV6=1
 
+# Wi-Fi custom DNS override
+#   1 = apply module DNS to Wi-Fi (default)
+#   0 = keep DHCP-provided DNS on Wi-Fi (recommended for people that use custom DNS on their router or AP)
+WIFI_CUSTOM_DNS=1
+
 # ──────────────────────────────DOH OPTIONS──────────────────────────────
 # Enable DNS-over-HTTPS via dnscrypt-proxy
 #   1 = enabled, 0 = disabled
@@ -39,4 +44,5 @@ DNS6_2=2606:4700:4700::1001
 
 # ───────────────────────────────────────────────────────────────────────
 # To apply changes: edit any value above and reboot your device.
-# Advanced users can also edit dnscrypt-proxy.toml after first boot. (if you dont know where to find it, dont edit it)
+# Advanced users can also edit dnscrypt-proxy.toml after first boot.
+# (if you don’t know where to find it, don’t edit it)
