@@ -39,7 +39,7 @@ abort() {
 : "${VERBOSE_LOG:=1}"
 : "${ENABLE_IPV6:=1}"
 : "${ENABLE_DOH:=0}"
-: "${DOH_SERVER:='https://cloudflare-dns.com/dns-query'}"
+: "${DOH_SERVERS_NAME:='cloudflare'}"
 : "${FAILSAFE_FALLBACK:=1}"
 : "${DNS1:=1.1.1.1}"
 : "${DNS2:=1.0.0.1}"
@@ -65,16 +65,28 @@ if [ "$ENABLE_DOH" -eq 1 ]; then
     cp "$TEMPLATE_CONF" "$TARGET_CONF" || abort "Could not copy toml template"
     chmod 644 "$TARGET_CONF"
   fi
+
   # patch ipv6_servers
   IPV6_FLAG=false; [ "$ENABLE_IPV6" -eq 1 ] && IPV6_FLAG=true
-  sed -i "s|^ipv6_servers *=.*|ipv6_servers = $IPV6_FLAG|" "$TARGET_CONF" || abort "Failed to update ipv6_servers"
-  # patch doh_servers
-  ESC_SERVER=$(printf '%s' "$DOH_SERVER" | sed 's/[\/&]/\\&/g')
-  sed -i "s|^doh_servers *=.*|doh_servers = ['$ESC_SERVER']|" "$TARGET_CONF" || abort "Failed to update doh_servers"
-  log "Patched TOML → DOH=$DOH_SERVER, IPv6=$IPV6_FLAG"
-fi
+  sed -i "s|^ipv6_servers *=.*|ipv6_servers = $IPV6_FLAG|" "$TARGET_CONF" \
+    || abort "Failed to update ipv6_servers"
 
-# ─────────────────────────────────────────────────────────────
+  # patch server_names
+  ESC_NAMES=$(printf '%s' "$DOH_SERVERS_NAME" | sed "s/,/','/g")
+  sed -i "s|^server_names *=.*|server_names = ['$ESC_NAMES']|" "$TARGET_CONF" \
+    || abort "Failed to update server_names"
+
+  # patch fallback_resolvers
+  if [ "$FAILSAFE_FALLBACK" -eq 1 ]; then
+    sed -i "s|^fallback_resolvers *=.*|fallback_resolvers = ['$DNS2:53']|" "$TARGET_CONF" \
+      || abort "Failed to update fallback_resolvers"
+  else
+    sed -i "s|^fallback_resolvers *=.*|fallback_resolvers = []|" "$TARGET_CONF" \
+      || abort "Failed to disable fallback_resolvers"
+  fi
+
+  log "Patched TOML → SERVERS=$DOH_SERVERS_NAME, IPv6=$IPV6_FLAG, Fallback=$FAILSAFE_FALLBACK"
+fi ─────────────────────────────────────────────────────────────
 # 🏃‍♂️ Start DoH service if enabled
 start_doh() {
   DNS1=127.0.0.1; DNS2=127.0.0.1
