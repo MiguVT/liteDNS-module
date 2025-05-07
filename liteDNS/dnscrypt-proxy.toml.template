@@ -1,26 +1,56 @@
-# liteDNS dnscrypt-proxy template
-# This file is copied to dnscrypt-proxy.toml on first boot by service.sh
-# Lines marked <--- are overwritten by service.sh based on your config.sh
+# liteDNS dnscrypt-proxy.toml.template
+# This file is copied to dnscrypt-proxy.toml at first boot.
+# Certain lines are overwritten by service.sh based on config.sh.
 
-## Where dnscrypt-proxy listens for queries.
+##############################
+# Core Settings
+##############################
+
+# Listen on local loopback
 listen_addresses = ['127.0.0.1:53']
 
-## Which DoH endpoint to use.
-## service.sh will replace this entire line with your DOH_SERVER
-doh_servers = ['https://cloudflare-dns.com/dns-query']
+# Resolver servers to use (DoH only)
+server_names = ['cloudflare']  # <--- overwritten by service.sh (DOH_SERVERS_NAME)
 
-## IPv4/IPv6 toggles
-ipv4_servers = true
-ipv6_servers = true    # <--- overwritten with ENABLE_IPV6 from config.sh
+# Enable DNS-over-HTTPS
+doh_servers = true
+dnscrypt_servers = false
+odoh_servers = false
 
-## Standard privacy/security settings
-require_dnssec    = true
-require_nolog     = true
-require_nofilter  = true
+# IPv6 support
+ipv6_servers = true             # <--- overwritten by service.sh (ENABLE_IPV6)
 
-dnscrypt_servers  = false
-odoh_servers      = false
+##############################
+# Privacy / Filtering Options
+##############################
 
-max_clients       = 250
-keepalive         = 30
-log_level         = 2
+require_dnssec   = true
+require_nolog    = true
+require_nofilter = true
+
+# fallback plaintext DNS if DoH fails (for initial bootstrap or fallback)
+fallback_resolvers = ['1.1.1.1:53', '1.0.0.1:53']  # <--- overwritten/disabled by service.sh (FAILSAFE_FALLBACK)
+
+##############################
+# Performance and Logging
+##############################
+
+max_clients = 250
+keepalive = 30
+log_level = 2
+
+# Optional: enable query/response logging
+# log_file = 'dnscrypt-proxy.log'
+
+# Cache responses to speed up
+cache = true
+cache_size = 4096
+
+##############################
+# Advanced / Security
+##############################
+
+tls_disable_session_tickets = true
+block_ipv6 = false
+block_unqualified_names = true
+block_undelegated = true
