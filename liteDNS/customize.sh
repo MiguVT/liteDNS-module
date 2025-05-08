@@ -31,45 +31,7 @@ if [ "$BRANCH" = "dev" ]; then
 fi
 
 # ─────────────────────────────────────────────────────────────
-# 1️⃣ Bootstrap config.sh from template on first install
-if [ ! -f "$CONFIG" ]; then
-  cp "$TEMPLATE" "$CONFIG" \
-    || abort "❌ Could not copy config.sh.template → config.sh (Step 1)"
-  chmod 644 "$CONFIG"
-fi
-if [ "$BRANCH" = "dev" ]; then
-  ui_print "ℹ️ Step 1 success"
-fi
-
-# ─────────────────────────────────────────────────────────────
-# 2️⃣ Detect CPU architecture
-ABI=$(getprop ro.product.cpu.abi)
-case "$ABI" in
-  arm64-v8a)   ARCH="android_arm64"   ;;
-  armeabi-v7a) ARCH="android_arm"      ;;
-  x86)         ARCH="android_i386"     ;;
-  x86_64)      ARCH="android_x86_64"   ;;
-  *)
-    ui_print "⚠️ Unknown ABI: $ABI → defaulting to android_arm64"
-    ARCH="android_arm64"
-    ;;
-esac
-ui_print "📦 ABI: $ABI → $ARCH"
-if [ "$BRANCH" = "dev" ]; then
-  ui_print "ℹ️ Step 2 success"
-fi
-
-# ─────────────────────────────────────────────────────────────
-# 3️⃣ Ensure required binaries are present
-for cmd in curl unzip getevent timeout; do
-  command -v $cmd >/dev/null 2>&1 || abort "❌ '$cmd' is required, but missing. (Step 3)"
-done
-if [ "$BRANCH" = "dev" ]; then
-  ui_print "ℹ️ Step 3 success"
-fi
-
-# ─────────────────────────────────────────────────────────────
-# 4️⃣ Volume-key prompt using timeout + getevent
+# 1️⃣ Volume-key prompt using timeout + getevent
 choose_option(){
   local prompt="$1"
   ui_print "$prompt"
@@ -90,7 +52,7 @@ if [ "$BRANCH" = "dev" ]; then
 fi
 
 # ─────────────────────────────────────────────────────────────
-# 5️⃣ If config found, offer reset vs keep
+# 2️⃣ If config found, offer reset vs keep
 if [ -f "$CONFIG" ]; then
   ui_print "⚙️ Existing config detected."
   ui_print "🔼 VOL+ → reset, 🔽 VOL- → keep"
@@ -113,6 +75,44 @@ if [ -f "$CONFIG" ]; then
 fi
 if [ "$BRANCH" = "dev" ]; then
   ui_print "ℹ️ Step 5 success"
+fi
+
+# ─────────────────────────────────────────────────────────────
+# 3️⃣ Bootstrap config.sh from template on first install
+if [ ! -f "$CONFIG" ]; then
+  cp "$TEMPLATE" "$CONFIG" \
+    || abort "❌ Could not copy config.sh.template → config.sh (Step 1)"
+  chmod 644 "$CONFIG"
+fi
+if [ "$BRANCH" = "dev" ]; then
+  ui_print "ℹ️ Step 1 success"
+fi
+
+# ─────────────────────────────────────────────────────────────
+# 4️⃣ Detect CPU architecture
+ABI=$(getprop ro.product.cpu.abi)
+case "$ABI" in
+  arm64-v8a)   ARCH="android_arm64"   ;;
+  armeabi-v7a) ARCH="android_arm"      ;;
+  x86)         ARCH="android_i386"     ;;
+  x86_64)      ARCH="android_x86_64"   ;;
+  *)
+    ui_print "⚠️ Unknown ABI: $ABI → defaulting to android_arm64"
+    ARCH="android_arm64"
+    ;;
+esac
+ui_print "📦 ABI: $ABI → $ARCH"
+if [ "$BRANCH" = "dev" ]; then
+  ui_print "ℹ️ Step 2 success"
+fi
+
+# ─────────────────────────────────────────────────────────────
+# 5️⃣ Ensure required binaries are present
+for cmd in curl unzip getevent timeout; do
+  command -v $cmd >/dev/null 2>&1 || abort "❌ '$cmd' is required, but missing. (Step 3)"
+done
+if [ "$BRANCH" = "dev" ]; then
+  ui_print "ℹ️ Step 3 success"
 fi
 
 # ─────────────────────────────────────────────────────────────
