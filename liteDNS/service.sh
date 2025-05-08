@@ -86,7 +86,8 @@ if [ "$ENABLE_DOH" -eq 1 ]; then
   fi
 
   log "Patched TOML → SERVERS=$DOH_SERVERS_NAME, IPv6=$IPV6_FLAG, Fallback=$FAILSAFE_FALLBACK"
-fi ─────────────────────────────────────────────────────────────
+fi 
+# ─────────────────────────────────────────────────────────────
 # 🏃‍♂️ Start DoH service if enabled
 start_doh() {
   DNS1=127.0.0.1; DNS2=127.0.0.1
