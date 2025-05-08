@@ -88,7 +88,7 @@ if [ -f "$FINAL_CONFIG" ]; then
           ui_print "✅ Keeping module."
           ;;
         *)
-          ui_print "⚠️ No input: keeping module."
+          ui_print "⚠️ No input: keeping module. reflash module if you want to delete it."
           ;;
       esac
       ;;
