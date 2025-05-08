@@ -10,7 +10,7 @@
 listen_addresses = ['127.0.0.1:53']
 
 # Resolver servers to use (DoH only)
-server_names = ['cloudflare']  # <--- overwritten by service.sh (DOH_SERVERS_NAME)
+server_names = ['cloudflare']
 
 # Enable DNS-over-HTTPS
 doh_servers = true
@@ -18,7 +18,7 @@ dnscrypt_servers = false
 odoh_servers = false
 
 # IPv6 support
-ipv6_servers = true             # <--- overwritten by service.sh (ENABLE_IPV6)
+ipv6_servers = true
 
 ##############################
 # Privacy / Filtering Options
@@ -29,7 +29,7 @@ require_nolog    = true
 require_nofilter = true
 
 # fallback plaintext DNS if DoH fails (for initial bootstrap or fallback)
-fallback_resolvers = ['1.1.1.1:53', '1.0.0.1:53']  # <--- overwritten/disabled by service.sh (FAILSAFE_FALLBACK)
+fallback_resolvers = ['1.0.0.1:53']
 
 ##############################
 # Performance and Logging
@@ -52,5 +52,3 @@ cache_size = 4096
 
 tls_disable_session_tickets = true
 block_ipv6 = false
-block_unqualified_names = true
-block_undelegated = true

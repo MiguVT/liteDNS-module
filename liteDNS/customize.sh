@@ -62,6 +62,32 @@ if [ -f "$CONFIG" ]; then
       ui_print "🗑️ Resetting config…"
       cp "$TEMPLATE" "$CONFIG" \
         || abort "❌ Failed to reset config.sh (Step 2)"
+      # print config.sh removed success
+      ui_print "✅ Config reset to template."
+
+      # ask if delete the entire module (For fresh install)
+      ui_print "❗️ Do you want to delete the entire module?"
+      ui_print "🔼 VOL+ → yes, 🔽 VOL- → no"
+      choose_option " Make a choice:"
+      case $? in
+        0)
+          ui_print "🗑️ Deleting module…"
+          rm -rf "$MODDIR" \
+            || abort "❌ Failed to delete module (Step 2)"
+          # print module removed success
+          ui_print "✅ Module deleted."
+          # create dir
+          mkdir -p "$MODDIR" \
+            || abort "❌ Failed to create module dir (Step 2)"
+          exit 0
+          ;;
+        1)
+          ui_print "✅ Keeping module."
+          ;;
+        *)
+          ui_print "⚠️ No input: keeping module."
+          ;;
+      esac
       ;;
     1)
       ui_print "✅ Keeping existing config."
@@ -76,6 +102,8 @@ fi
 if [ "$BRANCH" = "dev" ]; then
   ui_print "ℹ️ Step 2 success"
 fi
+
+
 
 # ─────────────────────────────────────────────────────────────
 # 3️⃣ Bootstrap config.sh from template on first install
