@@ -76,16 +76,7 @@ if [ "$ENABLE_DOH" -eq 1 ]; then
   sed -i "s|^server_names *=.*|server_names = ['$ESC_NAMES']|" "$TARGET_CONF" \
     || abort "Failed to update server_names"
 
-  # patch fallback_resolvers
-  if [ "$FAILSAFE_FALLBACK" -eq 1 ]; then
-    sed -i "s|^fallback_resolvers *=.*|fallback_resolvers = ['$DNS2:53']|" "$TARGET_CONF" \
-      || abort "Failed to update fallback_resolvers"
-  else
-    sed -i "s|^fallback_resolvers *=.*|fallback_resolvers = []|" "$TARGET_CONF" \
-      || abort "Failed to disable fallback_resolvers"
-  fi
-
-  log "Patched TOML → SERVERS=$DOH_SERVERS_NAME, IPv6=$IPV6_FLAG, Fallback=$FAILSAFE_FALLBACK"
+  log "Patched TOML → SERVERS=$DOH_SERVERS_NAME, IPv6=$IPV6_FLAG"
 fi 
 # ─────────────────────────────────────────────────────────────
 # 🏃‍♂️ Start DoH service if enabled
