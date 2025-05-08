@@ -15,7 +15,13 @@ server_names = ['cloudflare']
 # Enable DNS-over-HTTPS
 doh_servers = true
 dnscrypt_servers = false
-odoh_servers = false
+
+[sources]
+  [sources.'public-resolvers']
+  url = 'https://download.dnscrypt.info/resolvers-list/v3/public-resolvers.md'
+  cache_file = 'public-resolvers.md'
+  minisign_key = 'RWQf6LtGAiTDfHsN3z07EG6xMALmQuBlaqkbVJ3jvEolZrA87fqzkUTIhw=='
+  refresh_delay = 72
 
 # IPv6 support
 ipv6_servers = true
