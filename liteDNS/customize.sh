@@ -48,7 +48,7 @@ choose_option(){
   done
 }
 if [ "$BRANCH" = "dev" ]; then
-  ui_print "ℹ️ Step 4 success"
+  ui_print "ℹ️ Step 1 success"
 fi
 
 # ─────────────────────────────────────────────────────────────
@@ -61,7 +61,7 @@ if [ -f "$CONFIG" ]; then
     0)
       ui_print "🗑️ Resetting config…"
       cp "$TEMPLATE" "$CONFIG" \
-        || abort "❌ Failed to reset config.sh (Step 5)"
+        || abort "❌ Failed to reset config.sh (Step 2)"
       ;;
     1)
       ui_print "✅ Keeping existing config."
@@ -74,18 +74,18 @@ if [ -f "$CONFIG" ]; then
   esac
 fi
 if [ "$BRANCH" = "dev" ]; then
-  ui_print "ℹ️ Step 5 success"
+  ui_print "ℹ️ Step 2 success"
 fi
 
 # ─────────────────────────────────────────────────────────────
 # 3️⃣ Bootstrap config.sh from template on first install
 if [ ! -f "$CONFIG" ]; then
   cp "$TEMPLATE" "$CONFIG" \
-    || abort "❌ Could not copy config.sh.template → config.sh (Step 1)"
+    || abort "❌ Could not copy config.sh.template → config.sh (Step 3)"
   chmod 644 "$CONFIG"
 fi
 if [ "$BRANCH" = "dev" ]; then
-  ui_print "ℹ️ Step 1 success"
+  ui_print "ℹ️ Step 3 success"
 fi
 
 # ─────────────────────────────────────────────────────────────
@@ -103,16 +103,16 @@ case "$ABI" in
 esac
 ui_print "📦 ABI: $ABI → $ARCH"
 if [ "$BRANCH" = "dev" ]; then
-  ui_print "ℹ️ Step 2 success"
+  ui_print "ℹ️ Step 4 success"
 fi
 
 # ─────────────────────────────────────────────────────────────
 # 5️⃣ Ensure required binaries are present
 for cmd in curl unzip getevent timeout; do
-  command -v $cmd >/dev/null 2>&1 || abort "❌ '$cmd' is required, but missing. (Step 3)"
+  command -v $cmd >/dev/null 2>&1 || abort "❌ '$cmd' is required, but missing. (Step 5)"
 done
 if [ "$BRANCH" = "dev" ]; then
-  ui_print "ℹ️ Step 3 success"
+  ui_print "ℹ️ Step 5 success"
 fi
 
 # ─────────────────────────────────────────────────────────────
