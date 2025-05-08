@@ -116,11 +116,11 @@ start_doh() {
 # 🌐 Apply DNS props to an interface
 apply_dns_iface() {
   local iface="$1"
-  $PROPTOOL net.$iface.dns1 "$DNS1"
-  $PROPTOOL net.$iface.dns2 "$DNS2"
+  $PROPTOOL net.$iface.dns1 "$DNS1" || log "Failed to set DNS1 for $iface"
+  $PROPTOOL net.$iface.dns2 "$DNS2" || log "Failed to set DNS2 for $iface"
   if [ "$ENABLE_IPV6" -eq 1 ]; then
-    $PROPTOOL net.$iface.dns3 "$DNS6_1"
-    $PROPTOOL net.$iface.dns4 "$DNS6_2"
+    $PROPTOOL net.$iface.dns3 "$DNS6_1" || log "Failed to set DNS3 for $iface"
+    $PROPTOOL net.$iface.dns4 "$DNS6_2" || log "Failed to set DNS4 for $iface"
   fi
   log "Applied DNS to $iface: $DNS1/$DNS2"
 }
@@ -143,7 +143,7 @@ unset IFS
 
 # ───── Global DNS override (affects Wi-Fi)
 if [ "$WIFI_CUSTOM_DNS" -eq 1 ]; then
-  $PROPTOOL net.dns1 "$DNS1"
-  $PROPTOOL net.dns2 "$DNS2"
+  $PROPTOOL net.dns1 "$DNS1" || log "Failed to set DNS1 for global"
+  $PROPTOOL net.dns2 "$DNS2" || log "Failed to set DNS2 for global"
   log "Global DNS set to $DNS1/$DNS2 (Wi-Fi overridden)"
-els
+fi
