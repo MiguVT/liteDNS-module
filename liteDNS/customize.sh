@@ -15,8 +15,8 @@ CONF_DELETED=1
 
 
 MODID=$(grep 'id=' "$MODPATH/module.prop" | cut -d= -f2)
-FINAL_DIR="/data/adb/modules/liteDNS"
-FINAL_CONFIG="$FINAL_DIR/config.json"
+FINAL_DIR="/data/adb/modules/$MODID"
+FINAL_CONFIG="$FINAL_DIR/config.sh"
 
 ui_print "Final config path: $FINAL_CONFIG"
 
