@@ -13,6 +13,11 @@ TIMEOUT=10
 BRANCH="dev"
 CONF_DELETED=1
 
+
+MODID=$(grep 'id=' "$MODPATH/module.prop" | cut -d= -f2)
+FINAL_DIR="/data/adb/modules/$MODID"
+FINAL_CONFIG="$FINAL_DIR/config.json"
+
 # ─────────────────────────────────────────────────────────────
 # 🔨 Simple functions
 newline(){
@@ -53,32 +58,29 @@ fi
 
 # ─────────────────────────────────────────────────────────────
 # 2️⃣ If config found, offer reset vs keep
-if [ -f "$CONFIG" ]; then
+if [ -f "$FINAL_CONFIG" ]; then
   ui_print "⚙️ Existing config detected."
   ui_print "🔼 VOL+ → reset, 🔽 VOL- → keep"
   choose_option " Make a choice:"
   case $? in
     0)
       ui_print "🗑️ Resetting config…"
-      cp "$TEMPLATE" "$CONFIG" \
-        || abort "❌ Failed to reset config.sh (Step 2)"
+      rm -f "$FINAL_CONFIG" \
+        || abort "❌ Failed to delete config.sh (Step 2)"
       # print config.sh removed success
       ui_print "✅ Config reset to template."
 
       # ask if delete the entire module (For fresh install)
-      ui_print "❗️ Do you want to delete the entire module?"
+      ui_print "❗️ Do you want to delete the entire module? (for fresh install, recommended if config deleted)"
       ui_print "🔼 VOL+ → yes, 🔽 VOL- → no"
       choose_option " Make a choice:"
       case $? in
         0)
           ui_print "🗑️ Deleting module…"
-          rm -rf "$MODDIR" \
+          rm -rf "$FINAL_DIR" \
             || abort "❌ Failed to delete module (Step 2)"
           # print module removed success
           ui_print "✅ Module deleted."
-          # create dir
-          mkdir -p "$MODDIR" \
-            || abort "❌ Failed to create module dir (Step 2)"
           exit 0
           ;;
         1)
