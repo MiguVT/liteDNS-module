@@ -83,7 +83,6 @@ if [ -f "$FINAL_CONFIG" ]; then
             || abort "❌ Failed to delete module (Step 2)"
           # print module removed success
           ui_print "✅ Module deleted."
-          exit 0
           ;;
         1)
           ui_print "✅ Keeping module."
