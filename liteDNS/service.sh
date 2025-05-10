@@ -36,26 +36,6 @@ MONITOR_PID_FILE="$MODDIR/monitor.pid"     # PID file for the interface monitor 
 : > "$LOG" # Create a fresh log file
 
 # ─────────────────────────────────────────────────────────────
-# Logging Helpers
-# Functions to log events and handle errors with timestamps.
-
-date_stamp() {
-  # Generate a timestamp in the format YYYY-MM-DD HH:MM:SS
-  date '+%F %T'
-}
-
-log() {
-  # Log a message to the main log file with a timestamp
-  echo "[liteDNS] $(date_stamp) – $*" >> "$LOG"
-}
-
-abort() {
-  # Log an error message and terminate the script
-  log "ERROR: $*"
-  exit 1
-}
-
-# ─────────────────────────────────────────────────────────────
 # Load Configuration Values
 # Load user-defined settings from the configuration file. Provide defaults if missing.
 
@@ -70,6 +50,39 @@ abort() {
 : "${GLOBAL_DNS_OVERRIDE:=1}"     # Apply global DNS override (default: enabled)
 
 log "service.sh started (DoH=$ENABLE_DOH, DNS=$DNS, WIFI_CUSTOM_DNS=$WIFI_CUSTOM_DNS, MOBILE_CUSTOM_DNS=$MOBILE_CUSTOM_DNS)"
+
+# ─────────────────────────────────────────────────────────────
+# Set debug mode if DEBUG is enabled
+if [ "$VERBOSE_LOG" -eq 1 ]; then
+  set -x # Enable debug mode for verbose logging
+else
+  set +x # Disable debug mode
+  set +v # Enable verbose mode for logging
+fi
+
+# ─────────────────────────────────────────────────────────────
+# Logging Helpers
+# Functions to log events and handle errors with timestamps.
+
+date_stamp() {
+  # Generate a timestamp in the format YYYY-MM-DD HH:MM:SS
+  date '+%F %T'
+}
+
+log() {
+  # if DEBUG is disabled, check if $* starts with "DEBUG", then not log and return
+  if [ "$VERBOSE_LOG" -eq 0 ] && [[ "$*" == DEBUG* ]]; then
+    return
+  fi
+  # Log a message to the main log file with a timestamp
+  echo "[liteDNS] $(date_stamp) – $*" >> "$LOG"
+}
+
+abort() {
+  # Log an error message and terminate the script
+  log "ERROR: $*"
+  exit 1
+}
 
 # ─────────────────────────────────────────────────────────────
 # Prepare dnscrypt-proxy.toml Configuration
@@ -98,29 +111,46 @@ fi
 # Launch dnscrypt-proxy if DoH is enabled and set up necessary iptables rules.
 
 start_doh() {
+  log "DEBUG: Entering start_doh function"
   # Start the dnscrypt-proxy service and configure fallback mechanisms
   LOCAL_DNS="127.0.0.1" # Use localhost for DNS if dnscrypt-proxy starts successfully
+  
   if [ ! -x "$BIN" ] || [ ! -f "$TARGET_CONF" ]; then
     log "DoH disabled: missing binary or config"
+    log "DEBUG: Binary exists: $( [ -x "$BIN" ] && echo "yes" || echo "no" )"
+    log "DEBUG: Config exists: $( [ -f "$TARGET_CONF" ] && echo "yes" || echo "no" )"
     return
   fi
+  
+  log "DEBUG: Checking if port 53 is in use"
   if ss -ltnp 2>/dev/null | grep -q ':53 '; then
     log "Port 53 in use: skipping dnscrypt-proxy"
     return
   fi
+  
+  log "DEBUG: Adding iptables rules for bootstrap DNS"
   # Allow fallback DNS for resolving dnscrypt-proxy's bootstrap
-  iptables -t nat -A OUTPUT -p udp --dport 53 -d $DNS -j RETURN
-  iptables -t nat -A OUTPUT -p tcp --dport 53 -d $DNS -j RETURN
+  iptables -t nat -A OUTPUT -p udp --dport 53 -d $DNS -j RETURN || log "DEBUG: Failed to add UDP bootstrap rule"
+  iptables -t nat -A OUTPUT -p tcp --dport 53 -d $DNS -j RETURN || log "DEBUG: Failed to add TCP bootstrap rule"
+  
+  log "DEBUG: Launching dnscrypt-proxy"
   "$BIN" -config "$TARGET_CONF" >>"$DOH_LOG" 2>&1 &
   sleep 1
+  
+  log "DEBUG: Checking if dnscrypt-proxy is running"
   if pgrep -f "$BIN" >/dev/null; then
     log "dnscrypt-proxy launched successfully"
+    log "DEBUG: Setting DNS to localhost ($LOCAL_DNS)"
     DNS="$LOCAL_DNS"
   else
     log "dnscrypt-proxy failed to start"
+    log "DEBUG: dnscrypt-proxy process not found"
     [ "$FAILSAFE_FALLBACK" -eq 1 ] && log "Fallback to configured DNS: $DNS"
   fi
+  
+  log "DEBUG: Exiting start_doh function"
 }
+
 
 if [ "$ENABLE_DOH" -eq 1 ]; then
   start_doh
@@ -136,26 +166,34 @@ log "Exiting start_doh function"
 apply_dns_iptables() {
   local iface="$1"
   local target_dns="$2"
-  local base_iface
   
-  base_iface=$(echo "$iface" | cut -d '@' -f 1) # Extract base interface name
-  [ ! -d "/sys/class/net/$base_iface" ] && [ "$VERBOSE_LOG" -eq 1 ] && log "Interface $base_iface does not exist, skipping" && return 1
+  log "DEBUG: Entering apply_dns_iptables for interface $iface with DNS $target_dns"
   
+  [ ! -d "/sys/class/net/$iface" ] && [ "$VERBOSE_LOG" -eq 1 ] && log "Interface $iface does not exist, skipping" && return 1
+  
+  log "DEBUG: Interface $iface exists, proceeding with iptables rules"
   sleep 0.5 # Allow time for interface initialization
-  if iptables -t nat -C OUTPUT -o "$base_iface" -p udp --dport 53 -j DNAT --to-destination "${target_dns}:53" 2>/dev/null; then
-    [ "$VERBOSE_LOG" -eq 1 ] && log "Rules already exist for $base_iface, skipping"
+  
+  if iptables -t nat -C OUTPUT -o "$iface" -p udp --dport 53 -j DNAT --to-destination "${target_dns}:53" 2>/dev/null; then
+    [ "$VERBOSE_LOG" -eq 1 ] && log "Rules already exist for $iface, skipping"
+    log "DEBUG: Exiting apply_dns_iptables - rules already exist"
     return 0
   fi
-  iptables -t nat -A OUTPUT -o "$base_iface" -p udp --dport 53 -j DNAT --to-destination "${target_dns}:53" || log "Failed to apply iptables rule (UDP) on $base_iface"
-  iptables -t nat -A OUTPUT -o "$base_iface" -p tcp --dport 53 -j DNAT --to-destination "${target_dns}:53" || log "Failed to apply iptables rule (TCP) on $base_iface"
-  log "Applied iptables DNS redirection on $base_iface to ${target_dns}"
+  
+  log "DEBUG: Adding iptables UDP rule for $iface"
+  iptables -t nat -A OUTPUT -o "$iface" -p udp --dport 53 -j DNAT --to-destination "${target_dns}:53" || { log "Failed to apply iptables rule (UDP) on $iface"; log "DEBUG: UDP rule failed"; }
+  
+  log "DEBUG: Adding iptables TCP rule for $iface"
+  iptables -t nat -A OUTPUT -o "$iface" -p tcp --dport 53 -j DNAT --to-destination "${target_dns}:53" || { log "Failed to apply iptables rule (TCP) on $iface"; log "DEBUG: TCP rule failed"; }
+  
+  log "Applied iptables DNS redirection on $iface to ${target_dns}"
+  log "DEBUG: Exiting apply_dns_iptables successfully"
   return 0
 }
 
 # ─────────────────────────────────────────────────────────────
 # Interface Monitoring System
 # Dynamically monitor and manage DNS rules for active network interfaces.
-
 cleanup_previous_monitors() {
   if [ -f "$MONITOR_PID_FILE" ]; then
     local old_pid=$(cat "$MONITOR_PID_FILE" 2>/dev/null)
@@ -166,28 +204,48 @@ cleanup_previous_monitors() {
 
 process_new_interface() {
   local iface="$1"
+  log "DEBUG: Entering process_new_interface for $iface"
+  
   local base_iface=$(echo "$iface" | cut -d '@' -f 1)
+  log "DEBUG: Base interface name: $base_iface"
+  
   if ! echo "$base_iface" | grep -qE '^(wlan|rmnet|pdp|ppp|rmnet_data)'; then
+    log "DEBUG: Interface $base_iface is not a supported type, skipping"
     return 0
   fi
+  
   case "$base_iface" in
-    wlan*) [ "$WIFI_CUSTOM_DNS" -eq 1 ] && apply_dns_iptables "$base_iface" "$DNS" ;;
-    rmnet*|pdp*|ppp*|rmnet_data*) [ "$MOBILE_CUSTOM_DNS" -eq 1 ] && apply_dns_iptables "$base_iface" "$DNS" ;;
+    wlan*) 
+      log "DEBUG: Processing WiFi interface $base_iface (WIFI_CUSTOM_DNS=$WIFI_CUSTOM_DNS)"
+      [ "$WIFI_CUSTOM_DNS" -eq 1 ] && apply_dns_iptables "$base_iface" "$DNS" 
+      ;;
+    rmnet*|pdp*|ppp*|rmnet_data*) 
+      log "DEBUG: Processing mobile interface $base_iface (MOBILE_CUSTOM_DNS=$MOBILE_CUSTOM_DNS)"
+      [ "$MOBILE_CUSTOM_DNS" -eq 1 ] && apply_dns_iptables "$base_iface" "$DNS" 
+      ;;
   esac
+  
+  log "DEBUG: Exiting process_new_interface for $iface"
 }
 
 start_interface_monitor() {
+  log "DEBUG: Entering start_interface_monitor"
   cleanup_previous_monitors
+  log "DEBUG: Previous monitors cleaned up"
+  
   log "Processing existing network interfaces..."
   for iface in $(ls /sys/class/net 2>/dev/null | grep -E '^(wlan|rmnet|pdp|ppp|rmnet_data)'); do
-    local base_iface=$(echo "$iface" | cut -d '@' -f 1)
+    log "DEBUG: Found existing interface: $iface"
+    base_iface=$(echo "$iface" | cut -d '@' -f 1)
     log "Processing existing interface: $base_iface"
     process_new_interface "$base_iface"
   done
 
+  log "DEBUG: Creating initial interface list"
   ip -o link show | awk -F': ' '{print $2}' | cut -d '@' -f 1 | grep -E '^(wlan|rmnet|pdp|ppp|rmnet_data)' > "$IFACES_FILE"
   log "Initial interface list created with $(wc -l < "$IFACES_FILE") interfaces"
   
+  log "DEBUG: Starting interface monitor subprocess"
   (
     if command -v ip >/dev/null; then
       log "Using ip monitor for interface monitoring"
@@ -195,6 +253,7 @@ start_interface_monitor() {
         [ "$VERBOSE_LOG" -eq 1 ] && log "Network event: $line"
         if echo "$line" | grep -q "state UP"; then
           local iface=$(echo "$line" | awk '{print $2}' | cut -d '@' -f 1 | sed 's/://g')
+          log "DEBUG: Detected interface state change: $iface"
           if echo "$iface" | grep -qE '^(wlan|rmnet|pdp|ppp|rmnet_data)'; then
             log "Active interface detected: $iface"
             process_new_interface "$iface"
@@ -204,13 +263,15 @@ start_interface_monitor() {
       done
     else
       log "ip monitor not available, using adaptive polling"
+      log "DEBUG: Starting polling loop for interface monitoring"
       local sleep_time=5
       local changes_detected=0
       while true; do
         for iface in $(ls /sys/class/net/ 2>/dev/null); do
-          local base_iface=$(echo "$iface" | cut -d '@' -f 1)
+          base_iface=$(echo "$iface" | cut -d '@' -f 1)
           if echo "$base_iface" | grep -qE '^(wlan|rmnet|pdp|ppp|rmnet_data)'; then
             if [ -f "/sys/class/net/$iface/operstate" ] && [ "$(cat "/sys/class/net/$iface/operstate")" = "up" ] && ! grep -q "^$base_iface$" "$IFACES_FILE" 2>/dev/null; then
+              log "DEBUG: New active interface found in polling: $base_iface"
               log "New active interface detected: $base_iface"
               process_new_interface "$base_iface"
               echo "$base_iface" >> "$IFACES_FILE"
@@ -219,10 +280,12 @@ start_interface_monitor() {
           fi
         done
         if [ "$changes_detected" -eq 1 ]; then
+          log "DEBUG: Changes detected, resetting sleep timer"
           sleep_time=5
           changes_detected=0
         else
           [ "$sleep_time" -lt 30 ] && sleep_time=$((sleep_time + 5))
+          log "DEBUG: No changes, sleep time now $sleep_time seconds"
         fi
         sleep $sleep_time
       done
@@ -231,27 +294,43 @@ start_interface_monitor() {
   
   echo $! > "$MONITOR_PID_FILE"
   log "Interface monitor started (PID: $(cat "$MONITOR_PID_FILE"))"
+  log "DEBUG: Exiting start_interface_monitor"
   trap 'log "Trap triggered: Cleaning up interface monitor"; cleanup_previous_monitors' EXIT
 }
 
 # ─────────────────────────────────────────────────────────────
 # Apply Initial DNS Rules
 # Apply DNS redirection rules for active Wi-Fi and mobile-data interfaces.
-log "🔍 (0) Test123"
+log "DEBUG: Starting initial DNS rules application"
+
 if [ "$MOBILE_CUSTOM_DNS" -eq 1 ]; then
-  for iface in $(ls /sys/class/net 2>/dev/null | grep -E '^(rmnet|pdp|ppp|rmnet_data)'); do
-    local base_iface=$(echo "$iface" | cut -d '@' -f 1)
+  log "DEBUG: Processing mobile interfaces for initial setup"
+  mobile_interfaces=$(ls /sys/class/net 2>/dev/null | grep -E '^(rmnet|pdp|ppp|rmnet_data)')
+  log "DEBUG: Found mobile interfaces: $mobile_interfaces"
+  
+  for iface in $mobile_interfaces; do
+    base_iface=$(echo "$iface" | cut -d '@' -f 1)
+    log "DEBUG: Processing mobile interface: $base_iface"
     apply_dns_iptables "$base_iface" "$DNS"
   done
+  log "DEBUG: Completed mobile interface processing"
 fi
-log "🔍 (A) applying mobile rules"
+
 if [ "$WIFI_CUSTOM_DNS" -eq 1 ]; then
-  for iface in $(ls /sys/class/net 2>/dev/null | grep -E '^wlan'); do
-    local base_iface=$(echo "$iface" | cut -d '@' -f 1)
+  log "DEBUG: Processing WiFi interfaces for initial setup"
+  wifi_interfaces=$(ls /sys/class/net 2>/dev/null | grep -E '^wlan')
+  log "DEBUG: Found WiFi interfaces: $wifi_interfaces"
+  
+  for iface in $wifi_interfaces; do
+    base_iface=$(echo "$iface" | cut -d '@' -f 1)
+    log "DEBUG: Processing WiFi interface: $base_iface"
     apply_dns_iptables "$base_iface" "$DNS"
   done
+  log "DEBUG: Completed WiFi interface processing"
 fi
-log "🔍 (B) applying wifi rules"
+
+log "DEBUG: Finished initial DNS rules application"
+
 # ─────────────────────────────────────────────────────────────
 # Apply Global DNS Override
 # Redirect all outgoing DNS traffic to the configured DNS server if enabled.
@@ -265,6 +344,4 @@ fi
 # ─────────────────────────────────────────────────────────────
 # Start Interface Monitoring
 # Begin dynamic monitoring of network interfaces after initial configuration.
-log "🔍 before starting interface monitor"
 start_interface_monitor
-log "🔍 after start_interface_monitor?"
