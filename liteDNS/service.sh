@@ -57,9 +57,14 @@ if [ "$ENABLE_DOH" -eq 1 ]; then
   sed -i "s|^server_names *=.*|server_names = ['$ESC_NAMES']|" "$TARGET_CONF" \
     || abort "Failed to update server_names"
   # set bootstrap_resolvers to the configured DNS
-  sed -i "s|^bootstrap_resolvers *=.*|bootstrap_resolvers = ['$DNS']|" "$TARGET_CONF" \
-    || abort "Failed to update bootstrap_resolvers"
-  log "Patched TOML → SERVERS=$DOH_SERVERS_NAME"
+  if echo "$DNS" | grep -q ':'; then
+    # DNS already has a port
+    sed -i "s|^bootstrap_resolvers *=.*|bootstrap_resolvers = ['$DNS']|" "$TARGET_CONF"
+  else
+    # No port specified, append default port 53
+    sed -i "s|^bootstrap_resolvers *=.*|bootstrap_resolvers = ['$DNS:53']|" "$TARGET_CONF"
+  fi
+  log "Patched TOML → SERVERS=$DOH_SERVERS_NAME BOOTSTRAP=$DNS"
 fi
 
 # ─────────────────────────────────────────────────────────────
