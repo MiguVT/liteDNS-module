@@ -114,10 +114,14 @@ fi
 apply_dns_iptables() {
   local iface="$1"
   local target_dns="$2"
+  local base_iface
+  
+  # Extract base interface name before any special characters
+  base_iface=$(echo "$iface" | cut -d '@' -f 1)
   
   # Check if interface exists
-  if [ ! -d "/sys/class/net/$iface" ]; then
-    [ "$VERBOSE_LOG" -eq 1 ] && log "Interface $iface does not exist, skipping"
+  if [ ! -d "/sys/class/net/$base_iface" ]; then
+    [ "$VERBOSE_LOG" -eq 1 ] && log "Interface $base_iface does not exist, skipping"
     return 1
   fi
   
@@ -125,19 +129,20 @@ apply_dns_iptables() {
   sleep 0.5
   
   # Check if rules already exist to avoid duplicates
-  if iptables -t nat -C OUTPUT -o "$iface" -p udp --dport 53 -j DNAT --to-destination "${target_dns}:53" 2>/dev/null; then
-    [ "$VERBOSE_LOG" -eq 1 ] && log "Rules already exist for $iface, skipping"
+  if iptables -t nat -C OUTPUT -o "$base_iface" -p udp --dport 53 -j DNAT --to-destination "${target_dns}:53" 2>/dev/null; then
+    [ "$VERBOSE_LOG" -eq 1 ] && log "Rules already exist for $base_iface, skipping"
     return 0
   fi
   
   # Redirect both UDP and TCP destined to port 53 on the given interface
-  iptables -t nat -A OUTPUT -o "$iface" -p udp --dport 53 -j DNAT --to-destination "${target_dns}:53" \
-    || log "Failed to apply iptables rule (UDP) on $iface"
-  iptables -t nat -A OUTPUT -o "$iface" -p tcp --dport 53 -j DNAT --to-destination "${target_dns}:53" \
-    || log "Failed to apply iptables rule (TCP) on $iface"
-  log "Applied iptables DNS redirection on $iface to ${target_dns}"
+  iptables -t nat -A OUTPUT -o "$base_iface" -p udp --dport 53 -j DNAT --to-destination "${target_dns}:53" \
+    || log "Failed to apply iptables rule (UDP) on $base_iface"
+  iptables -t nat -A OUTPUT -o "$base_iface" -p tcp --dport 53 -j DNAT --to-destination "${target_dns}:53" \
+    || log "Failed to apply iptables rule (TCP) on $base_iface"
+  log "Applied iptables DNS redirection on $base_iface to ${target_dns}"
   return 0
 }
+
 
 # ─────────────────────────────────────────────────────────────
 # Interface monitoring system
@@ -159,19 +164,23 @@ update_interface_list() {
 # Process a newly detected interface
 process_new_interface() {
   local iface="$1"
+  local base_iface
+  
+  # Extract base interface name before any special characters
+  base_iface=$(echo "$iface" | cut -d '@' -f 1)
   
   # Skip if not a network interface we care about
-  if ! echo "$iface" | grep -qE '^(wlan|rmnet|pdp|ppp|rmnet_data)'; then
+  if ! echo "$base_iface" | grep -qE '^(wlan|rmnet|pdp|ppp|rmnet_data)'; then
     return 0
   fi
   
   # Apply rules based on interface type
-  case "$iface" in
+  case "$base_iface" in
     wlan*)
-      [ "$WIFI_CUSTOM_DNS" -eq 1 ] && apply_dns_iptables "$iface" "$DNS"
+      [ "$WIFI_CUSTOM_DNS" -eq 1 ] && apply_dns_iptables "$base_iface" "$DNS"
       ;;
     rmnet*|pdp*|ppp*|rmnet_data*)
-      [ "$MOBILE_CUSTOM_DNS" -eq 1 ] && apply_dns_iptables "$iface" "$DNS"
+      [ "$MOBILE_CUSTOM_DNS" -eq 1 ] && apply_dns_iptables "$base_iface" "$DNS"
       ;;
   esac
 }
@@ -181,8 +190,14 @@ start_interface_monitor() {
   # Clean up previous monitors
   cleanup_previous_monitors
   
-  # Create initial interface list
-  update_interface_list
+  # Process all existing interfaces first
+  for iface in $(ls /sys/class/net 2>/dev/null | grep -E '^(wlan|rmnet|pdp|ppp|rmnet_data)'); do
+    log "Processing existing interface: $iface"
+    process_new_interface "$iface"
+  done
+  
+  # Create initial interface list with base names (without @)
+  ip -o link show | awk -F': ' '{print $2}' | cut -d '@' -f 1 | grep -E '^(wlan|rmnet|pdp|ppp|rmnet_data)' > "$IFACES_FILE"
   log "Initial interface list created with $(wc -l < "$IFACES_FILE") interfaces"
   
   # Start the interface monitor in background
@@ -191,8 +206,11 @@ start_interface_monitor() {
     if command -v inotifyd >/dev/null; then
       log "Using inotifyd for interface monitoring"
       
-      # Monitor /sys/class/net directory for create events
-      inotifyd - /sys/class/net:n 2>/dev/null | while read -r line; do
+      # Monitor /sys/class/net directory for all events (not just create)
+      inotifyd - /sys/class/net:a 2>/dev/null | while read -r line; do
+        # Log raw event for debugging if verbose
+        [ "$VERBOSE_LOG" -eq 1 ] && log "Raw inotify event: $line"
+        
         # Parse the inotifyd event line (format: /path e mask)
         local path=$(echo "$line" | awk '{print $1}')
         local event=$(echo "$line" | awk '{print $2}')
@@ -200,36 +218,51 @@ start_interface_monitor() {
         # Extract interface name from path
         local iface=$(basename "$path")
         
-        # Process interface if it's a creation event
-        if [ "$event" = "c" ] || [ "$event" = "C" ]; then
-          log "Detected new interface via inotifyd: $iface"
+        # Process interface for any relevant event (create, modify)
+        if [ "$event" = "c" ] || [ "$event" = "C" ] || [ "$event" = "m" ] || [ "$event" = "M" ]; then
+          log "Detected interface event via inotifyd: $iface (event: $event)"
           process_new_interface "$iface"
           
-          # Update our interface list
-          update_interface_list
+          # Update our interface list (with base names)
+          ip -o link show | awk -F': ' '{print $2}' | cut -d '@' -f 1 | grep -E '^(wlan|rmnet|pdp|ppp|rmnet_data)' > "$IFACES_FILE"
         fi
       done
     else
-      # Fallback to efficient polling
+      # Fallback to efficient polling with adaptive sleep
       log "inotifyd not available, using polling for interface monitoring"
       
+      local sleep_time=10
+      local changes_detected=0
+      
       while true; do
-        # Get current interfaces
-        local current_ifaces=$(ip -o link show | awk -F': ' '{print $2}' | grep -E '^(wlan|rmnet|pdp|ppp|rmnet_data)')
+        # Get current interfaces (handle special characters)
+        local current_ifaces=$(ip -o link show | awk -F': ' '{print $2}' | cut -d '@' -f 1 | grep -E '^(wlan|rmnet|pdp|ppp|rmnet_data)')
         
         # Find new interfaces by comparing with saved list
         for iface in $current_ifaces; do
           if ! grep -q "^$iface$" "$IFACES_FILE" 2>/dev/null; then
             log "Detected new interface via polling: $iface"
             process_new_interface "$iface"
+            changes_detected=1
           fi
         done
         
         # Update interface list
         echo "$current_ifaces" > "$IFACES_FILE"
         
-        # Sleep to reduce battery impact (10 seconds is a good balance)
-        sleep 10
+        # Adaptive sleep: shorter if changes detected, longer if stable
+        if [ "$changes_detected" -eq 1 ]; then
+          sleep_time=5
+          changes_detected=0
+        else
+          # Gradually increase sleep time up to 30 seconds if no changes
+          if [ "$sleep_time" -lt 30 ]; then
+            sleep_time=$((sleep_time + 5))
+          fi
+        fi
+        
+        # Sleep to reduce battery impact
+        sleep $sleep_time
       done
     fi
   ) &
@@ -237,6 +270,9 @@ start_interface_monitor() {
   # Save monitor PID
   echo $! > "$MONITOR_PID_FILE"
   log "Started interface monitor (PID: $(cat "$MONITOR_PID_FILE"))"
+  
+  # Set trap to ensure monitor is killed when script exits
+  trap 'log "Cleaning up interface monitor"; cleanup_previous_monitors' EXIT
 }
 
 # ─────────────────────────────────────────────────────────────
@@ -245,14 +281,18 @@ start_interface_monitor() {
 # For mobile-data interfaces (rmnet, pdp, ppp, rmnet_data)
 if [ "$MOBILE_CUSTOM_DNS" -eq 1 ]; then
   for iface in $(ls /sys/class/net 2>/dev/null | grep -E '^(rmnet|pdp|ppp|rmnet_data)'); do
-    apply_dns_iptables "$iface" "$DNS"
+    # Extract base interface name before any special characters
+    base_iface=$(echo "$iface" | cut -d '@' -f 1)
+    apply_dns_iptables "$base_iface" "$DNS"
   done
 fi
 
 # For Wi‑Fi interfaces (typically starting with wlan)
 if [ "$WIFI_CUSTOM_DNS" -eq 1 ]; then
   for iface in $(ls /sys/class/net 2>/dev/null | grep -E '^wlan'); do
-    apply_dns_iptables "$iface" "$DNS"
+    # Extract base interface name before any special characters
+    base_iface=$(echo "$iface" | cut -d '@' -f 1)
+    apply_dns_iptables "$base_iface" "$DNS"
   done
 fi
 
