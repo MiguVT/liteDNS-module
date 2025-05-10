@@ -56,6 +56,9 @@ if [ "$ENABLE_DOH" -eq 1 ]; then
   ESC_NAMES=$(printf '%s' "$DOH_SERVERS_NAME" | sed "s/,/','/g")
   sed -i "s|^server_names *=.*|server_names = ['$ESC_NAMES']|" "$TARGET_CONF" \
     || abort "Failed to update server_names"
+  # set bootstrap_resolvers to the configured DNS
+  sed -i "s|^bootstrap_resolvers *=.*|bootstrap_resolvers = ['$DNS']|" "$TARGET_CONF" \
+    || abort "Failed to update bootstrap_resolvers"
   log "Patched TOML → SERVERS=$DOH_SERVERS_NAME"
 fi
 
@@ -72,6 +75,10 @@ start_doh() {
     log "Port 53 in use: skipping dnscrypt-proxy"
     return
   fi
+  # Apply iptables to allow fallback DNS for resolve dnscrypt-proxy
+  iptables -t nat -A OUTPUT -p udp --dport 53 -d $DNS -j RETURN
+  iptables -t nat -A OUTPUT -p tcp --dport 53 -d $DNS -j RETURN
+  # Add more for other bootstrap IPs if needed
   "$BIN" -config "$TARGET_CONF" >>"$DOH_LOG" 2>&1 &
   sleep 1
   if pgrep -f "$BIN" >/dev/null; then

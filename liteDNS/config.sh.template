@@ -44,7 +44,7 @@ DOH_SERVERS_NAME='cloudflare'
 FAILSAFE_FALLBACK=0
 
 # ──────────────────────────────DNS OPTIONS──────────────────────────────
-# Upstream plaintext DNS servers (Cloudflare defaults) - if DoH is enabled, these are only used for fallback
+# Upstream plaintext DNS servers (Cloudflare defaults) - if DoH is enabled, these are only used for fallback and download dnscrypt-proxy resolvers
 DNS=1.1.1.1
 
 # ───────────────────────────────────────────────────────────────────────
