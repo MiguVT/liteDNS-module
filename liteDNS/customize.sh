@@ -185,7 +185,25 @@ if [ "$BRANCH" = "dev" ]; then
 fi
 
 # ─────────────────────────────────────────────────────────────
-# 8️⃣ Download & install dnscrypt-proxy if opted-in
+# 8️⃣ Download & install dnscrypt-proxy if opted-in or if DoH is enabled on FINAL_CONFIG (if config wasnt deleted)
+if [ "$CONF_DELETED" -eq 1 ]; then
+  if [ "$CHOICE" -eq 1 ]; then
+    ui_print "🔌 DoH enabled, installing dnscrypt-proxy…"
+  else
+    ui_print "❌ DoH disabled, skipping dnscrypt-proxy installation."
+    exit 0
+  fi
+else
+  # Check if DoH is enabled in FINAL_CONFIG
+  . "$FINAL_CONFIG"
+  if [ "$ENABLE_DOH" -eq 1 ]; then
+    ui_print "🔌 DoH enabled, installing dnscrypt-proxy…"
+  else
+    ui_print "❌ DoH disabled, skipping dnscrypt-proxy installation."
+    exit 0
+  fi
+fi
+
 if [ "$CHOICE" -eq 1 ]; then
   ui_print "🔌 Checking internet connectivity…"
   curl -fsSL --head https://api.github.com >/dev/null 2>&1 \
