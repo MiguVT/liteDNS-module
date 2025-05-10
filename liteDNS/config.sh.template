@@ -25,6 +25,9 @@ MOBILE_CUSTOM_DNS=1
 #   by ensuring all DNS traffic is redirected through the chosen DNS server. This is the default behavior
 #   in most DNS modules. If you set Wi-Fi or mobile data DNS options to 0, but enable this option,
 #   the global override will still force all interfaces-including Wi-Fi and mobile data-to use the specified DNS.
+#
+#   ⚠️ If you use a VPN, please note that enabling this option may cause issues with some VPNs, specifically when DoH is enabled.
+GLOBAL_DNS_OVERRIDE=1
 
 # ──────────────────────────────DOH OPTIONS──────────────────────────────
 # Enable DNS-over-HTTPS via dnscrypt-proxy
