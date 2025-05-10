@@ -1,8 +1,9 @@
 #!/system/bin/sh
-# service.sh – Boot-time DNS application for liteDNS
+# liteDNS - Advanced DNS management for Android
+# Handles both static configuration and dynamic interface monitoring
 
 # ─────────────────────────────────────────────────────────────
-# Module paths and files
+# Constants and configuration paths
 MODDIR="${0%/*}"
 TEMPLATE_CONF="$MODDIR/dnscrypt-proxy.toml.template"
 TARGET_CONF="$MODDIR/dnscrypt-proxy.toml"
@@ -11,6 +12,10 @@ LOG_DIR="$MODDIR/log"
 LOG="$LOG_DIR/service.log"
 DOH_LOG="$LOG_DIR/dnscrypt.log"
 BIN="$MODDIR/bin/dnscrypt-proxy"
+IFACES_FILE="$MODDIR/active_interfaces.txt"
+LOCK_FILE="$MODDIR/litedns.lock"
+PID_FILE="$MODDIR/litedns.pid"
+MONITOR_PID_FILE="$MODDIR/monitor.pid"
 
 # ─────────────────────────────────────────────────────────────
 # Bootstrap config and logs
@@ -109,20 +114,137 @@ fi
 apply_dns_iptables() {
   local iface="$1"
   local target_dns="$2"
+  
+  # Check if interface exists
+  if [ ! -d "/sys/class/net/$iface" ]; then
+    [ "$VERBOSE_LOG" -eq 1 ] && log "Interface $iface does not exist, skipping"
+    return 1
+  fi
+  
+  # Wait a moment for interface to initialize fully (important for dynamic interfaces)
+  sleep 0.5
+  
+  # Check if rules already exist to avoid duplicates
+  if iptables -t nat -C OUTPUT -o "$iface" -p udp --dport 53 -j DNAT --to-destination "${target_dns}:53" 2>/dev/null; then
+    [ "$VERBOSE_LOG" -eq 1 ] && log "Rules already exist for $iface, skipping"
+    return 0
+  fi
+  
   # Redirect both UDP and TCP destined to port 53 on the given interface
   iptables -t nat -A OUTPUT -o "$iface" -p udp --dport 53 -j DNAT --to-destination "${target_dns}:53" \
     || log "Failed to apply iptables rule (UDP) on $iface"
   iptables -t nat -A OUTPUT -o "$iface" -p tcp --dport 53 -j DNAT --to-destination "${target_dns}:53" \
     || log "Failed to apply iptables rule (TCP) on $iface"
   log "Applied iptables DNS redirection on $iface to ${target_dns}"
+  return 0
+}
+
+# ─────────────────────────────────────────────────────────────
+# Interface monitoring system
+
+# Clean up any previous monitoring processes
+cleanup_previous_monitors() {
+  if [ -f "$MONITOR_PID_FILE" ]; then
+    local old_pid=$(cat "$MONITOR_PID_FILE" 2>/dev/null)
+    [ -n "$old_pid" ] && kill "$old_pid" >/dev/null 2>&1
+    rm -f "$MONITOR_PID_FILE"
+  fi
+}
+
+# Update the list of currently active interfaces
+update_interface_list() {
+  ip -o link show | awk -F': ' '{print $2}' | grep -E '^(wlan|rmnet|pdp|ppp|rmnet_data)' > "$IFACES_FILE"
+}
+
+# Process a newly detected interface
+process_new_interface() {
+  local iface="$1"
+  
+  # Skip if not a network interface we care about
+  if ! echo "$iface" | grep -qE '^(wlan|rmnet|pdp|ppp|rmnet_data)'; then
+    return 0
+  fi
+  
+  # Apply rules based on interface type
+  case "$iface" in
+    wlan*)
+      [ "$WIFI_CUSTOM_DNS" -eq 1 ] && apply_dns_iptables "$iface" "$DNS"
+      ;;
+    rmnet*|pdp*|ppp*|rmnet_data*)
+      [ "$MOBILE_CUSTOM_DNS" -eq 1 ] && apply_dns_iptables "$iface" "$DNS"
+      ;;
+  esac
+}
+
+# Start interface monitoring
+start_interface_monitor() {
+  # Clean up previous monitors
+  cleanup_previous_monitors
+  
+  # Create initial interface list
+  update_interface_list
+  log "Initial interface list created with $(wc -l < "$IFACES_FILE") interfaces"
+  
+  # Start the interface monitor in background
+  (
+    # Use inotifyd if available (most efficient)
+    if command -v inotifyd >/dev/null; then
+      log "Using inotifyd for interface monitoring"
+      
+      # Monitor /sys/class/net directory for create events
+      inotifyd - /sys/class/net:n 2>/dev/null | while read -r line; do
+        # Parse the inotifyd event line (format: /path e mask)
+        local path=$(echo "$line" | awk '{print $1}')
+        local event=$(echo "$line" | awk '{print $2}')
+        
+        # Extract interface name from path
+        local iface=$(basename "$path")
+        
+        # Process interface if it's a creation event
+        if [ "$event" = "c" ] || [ "$event" = "C" ]; then
+          log "Detected new interface via inotifyd: $iface"
+          process_new_interface "$iface"
+          
+          # Update our interface list
+          update_interface_list
+        fi
+      done
+    else
+      # Fallback to efficient polling
+      log "inotifyd not available, using polling for interface monitoring"
+      
+      while true; do
+        # Get current interfaces
+        local current_ifaces=$(ip -o link show | awk -F': ' '{print $2}' | grep -E '^(wlan|rmnet|pdp|ppp|rmnet_data)')
+        
+        # Find new interfaces by comparing with saved list
+        for iface in $current_ifaces; do
+          if ! grep -q "^$iface$" "$IFACES_FILE" 2>/dev/null; then
+            log "Detected new interface via polling: $iface"
+            process_new_interface "$iface"
+          fi
+        done
+        
+        # Update interface list
+        echo "$current_ifaces" > "$IFACES_FILE"
+        
+        # Sleep to reduce battery impact (10 seconds is a good balance)
+        sleep 10
+      done
+    fi
+  ) &
+  
+  # Save monitor PID
+  echo $! > "$MONITOR_PID_FILE"
+  log "Started interface monitor (PID: $(cat "$MONITOR_PID_FILE"))"
 }
 
 # ─────────────────────────────────────────────────────────────
 # Apply iptables rules based on interface type
 
-# For mobile-data interfaces (rmnet, pdp, ppp)
+# For mobile-data interfaces (rmnet, pdp, ppp, rmnet_data)
 if [ "$MOBILE_CUSTOM_DNS" -eq 1 ]; then
-  for iface in $(ls /sys/class/net 2>/dev/null | grep -E '^(rmnet|pdp|ppp)'); do
+  for iface in $(ls /sys/class/net 2>/dev/null | grep -E '^(rmnet|pdp|ppp|rmnet_data)'); do
     apply_dns_iptables "$iface" "$DNS"
   done
 fi
@@ -144,3 +266,7 @@ if [ "$GLOBAL_DNS_OVERRIDE" -eq 1 ]; then
     || log "Failed to apply global iptables rule (TCP)"
   log "Global DNS redirect applied to all outgoing traffic to ${DNS}"
 fi
+
+# ─────────────────────────────────────────────────────────────
+# Start the interface monitor after all initial rules are applied
+start_interface_monitor
