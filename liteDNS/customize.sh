@@ -191,16 +191,15 @@ if [ "$CONF_DELETED" -eq 1 ]; then
     ui_print "🔌 DoH enabled, installing dnscrypt-proxy…"
   else
     ui_print "❌ DoH disabled, skipping dnscrypt-proxy installation."
-    exit 0
   fi
 else
   # Check if DoH is enabled in FINAL_CONFIG
   . "$FINAL_CONFIG"
   if [ "$ENABLE_DOH" -eq 1 ]; then
+    CHOICE=1
     ui_print "🔌 DoH enabled, installing dnscrypt-proxy…"
   else
     ui_print "❌ DoH disabled, skipping dnscrypt-proxy installation."
-    exit 0
   fi
 fi
 
