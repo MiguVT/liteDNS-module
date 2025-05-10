@@ -2,7 +2,7 @@
 # service.sh – Boot-time DNS application for liteDNS
 
 # ─────────────────────────────────────────────────────────────
-# 📁 Module paths
+# Module paths and files
 MODDIR="${0%/*}"
 TEMPLATE_CONF="$MODDIR/dnscrypt-proxy.toml.template"
 TARGET_CONF="$MODDIR/dnscrypt-proxy.toml"
@@ -10,11 +10,10 @@ CONFIG="$MODDIR/config.sh"
 LOG_DIR="$MODDIR/log"
 LOG="$LOG_DIR/service.log"
 DOH_LOG="$LOG_DIR/dnscrypt.log"
-DOH_FAIL="$LOG_DIR/dnscrypt-fail.log"
 BIN="$MODDIR/bin/dnscrypt-proxy"
 
 # ─────────────────────────────────────────────────────────────
-# 🛠 Bootstrap config and logs
+# Bootstrap config and logs
 [ ! -d "$LOG_DIR" ] && mkdir -p "$LOG_DIR"
 [ ! -f "$CONFIG" ] && cp "$MODDIR/config.sh.template" "$CONFIG" && chmod 644 "$CONFIG"
 # rotate on each boot
@@ -22,7 +21,7 @@ BIN="$MODDIR/bin/dnscrypt-proxy"
 : > "$LOG"
 
 # ─────────────────────────────────────────────────────────────
-# 📝 Logging helper
+# Logging helpers
 date_stamp() { date '+%F %T'; }
 log() {
   echo "[liteDNS] $(date_stamp) – $*" >> "$LOG"
@@ -33,55 +32,38 @@ abort() {
 }
 
 # ─────────────────────────────────────────────────────────────
-# 🔄 Load config values
+# Load config values (new config.sh provides a single DNS and DNS flags for Wi‑Fi and Mobile)
 . "$CONFIG"
-# set defaults if missing
 : "${VERBOSE_LOG:=1}"
-: "${ENABLE_IPV6:=1}"
+: "${WIFI_CUSTOM_DNS:=1}"
+: "${MOBILE_CUSTOM_DNS:=1}"
 : "${ENABLE_DOH:=0}"
 : "${DOH_SERVERS_NAME:='cloudflare'}"
 : "${FAILSAFE_FALLBACK:=1}"
-: "${DNS1:=1.1.1.1}"
-: "${DNS2:=1.0.0.1}"
-: "${DNS6_1:=2606:4700:4700::1111}"
-: "${DNS6_2:=2606:4700:4700::1001}"
-: "${WIFI_CUSTOM_DNS:=1}"
+: "${DNS:=1.1.1.1}"
+: "${GLOBAL_DNS_OVERRIDE:=1}"
+
+log "service.sh started (DoH=$ENABLE_DOH, DNS=$DNS, WIFI_CUSTOM_DNS=$WIFI_CUSTOM_DNS, MOBILE_CUSTOM_DNS=$MOBILE_CUSTOM_DNS)"
 
 # ─────────────────────────────────────────────────────────────
-# 🔍 Choose prop tool
-if command -v resetprop >/dev/null 2>&1; then
-  PROPTOOL='resetprop -n'
-else
-  PROPTOOL='setprop'
-fi
-
-log "service.sh started (DoH=$ENABLE_DOH, IPv6=$ENABLE_IPV6, WIFI_CUSTOM_DNS=$WIFI_CUSTOM_DNS)"
-
-# ─────────────────────────────────────────────────────────────
-# 🛠 Prepare dnscrypt-proxy.toml from template if DoH enabled
+# Prepare dnscrypt-proxy.toml from template if DoH is enabled
 if [ "$ENABLE_DOH" -eq 1 ]; then
-  # copy default template on first run
   if [ ! -f "$TARGET_CONF" ]; then
     cp "$TEMPLATE_CONF" "$TARGET_CONF" || abort "Could not copy toml template"
     chmod 644 "$TARGET_CONF"
   fi
-
-  # patch ipv6_servers
-  IPV6_FLAG=false; [ "$ENABLE_IPV6" -eq 1 ] && IPV6_FLAG=true
-  sed -i "s|^ipv6_servers *=.*|ipv6_servers = $IPV6_FLAG|" "$TARGET_CONF" \
-    || abort "Failed to update ipv6_servers"
-
-  # patch server_names
+  # Patch server_names with the list from DOH_SERVERS_NAME
   ESC_NAMES=$(printf '%s' "$DOH_SERVERS_NAME" | sed "s/,/','/g")
   sed -i "s|^server_names *=.*|server_names = ['$ESC_NAMES']|" "$TARGET_CONF" \
     || abort "Failed to update server_names"
+  log "Patched TOML → SERVERS=$DOH_SERVERS_NAME"
+fi
 
-  log "Patched TOML → SERVERS=$DOH_SERVERS_NAME, IPv6=$IPV6_FLAG"
-fi 
 # ─────────────────────────────────────────────────────────────
-# 🏃‍♂️ Start DoH service if enabled
+# Start DoH service if enabled
 start_doh() {
-  DNS1=127.0.0.1; DNS2=127.0.0.1
+  # When DoH starts successfully, use localhost as DNS; otherwise fallback to $DNS
+  LOCAL_DNS="127.0.0.1"
   if [ ! -x "$BIN" ] || [ ! -f "$TARGET_CONF" ]; then
     log "DoH disabled: missing binary or config"
     return
@@ -90,51 +72,63 @@ start_doh() {
     log "Port 53 in use: skipping dnscrypt-proxy"
     return
   fi
-  "$BIN" -config "$TARGET_CONF" >>"$DOH_LOG" 2>>"$DOH_FAIL" &
+  "$BIN" -config "$TARGET_CONF" >>"$DOH_LOG" 2>&1 &
   sleep 1
   if pgrep -f "$BIN" >/dev/null; then
     log "dnscrypt-proxy launched successfully"
+    DNS="$LOCAL_DNS"
   else
     log "dnscrypt-proxy failed to start"
     if [ "$FAILSAFE_FALLBACK" -eq 1 ]; then
-      DNS1=1.1.1.1; DNS2=1.0.0.1
-      log "Fallback to $DNS1/$DNS2"
+      DNS="$DNS"
+      log "Fallback to configured DNS: $DNS"
     fi
   fi
 }
 
-# ─────────────────────────────────────────────────────────────
-# 🌐 Apply DNS props to an interface
-apply_dns_iface() {
-  local iface="$1"
-  $PROPTOOL net.$iface.dns1 "$DNS1" || log "Failed to set DNS1 for $iface"
-  $PROPTOOL net.$iface.dns2 "$DNS2" || log "Failed to set DNS2 for $iface"
-  if [ "$ENABLE_IPV6" -eq 1 ]; then
-    $PROPTOOL net.$iface.dns3 "$DNS6_1" || log "Failed to set DNS3 for $iface"
-    $PROPTOOL net.$iface.dns4 "$DNS6_2" || log "Failed to set DNS4 for $iface"
-  fi
-  log "Applied DNS to $iface: $DNS1/$DNS2"
-}
-
-# ─────────────────────────────────────────────────────────────
-# 🎬 Main execution
-
 if [ "$ENABLE_DOH" -eq 1 ]; then
   start_doh
 else
-  log "DoH not enabled: using $DNS1/$DNS2"
+  log "DoH not enabled: using configured DNS $DNS"
 fi
 
-# handle mobile interfaces
-IFS=$'\n'
-for iface in $(ls /sys/class/net 2>/dev/null | grep -E '^(rmnet|pdp|ppp)'); do
-  apply_dns_iface "$iface"
-done
-unset IFS
+# ─────────────────────────────────────────────────────────────
+# Function to apply iptables-based DNS redirection on an interface
+apply_dns_iptables() {
+  local iface="$1"
+  local target_dns="$2"
+  # Redirect both UDP and TCP destined to port 53 on the given interface
+  iptables -t nat -A OUTPUT -o "$iface" -p udp --dport 53 -j DNAT --to-destination "${target_dns}:53" \
+    || log "Failed to apply iptables rule (UDP) on $iface"
+  iptables -t nat -A OUTPUT -o "$iface" -p tcp --dport 53 -j DNAT --to-destination "${target_dns}:53" \
+    || log "Failed to apply iptables rule (TCP) on $iface"
+  log "Applied iptables DNS redirection on $iface to ${target_dns}"
+}
 
-# ───── Global DNS override (affects Wi-Fi)
+# ─────────────────────────────────────────────────────────────
+# Apply iptables rules based on interface type
+
+# For mobile-data interfaces (rmnet, pdp, ppp)
+if [ "$MOBILE_CUSTOM_DNS" -eq 1 ]; then
+  for iface in $(ls /sys/class/net 2>/dev/null | grep -E '^(rmnet|pdp|ppp)'); do
+    apply_dns_iptables "$iface" "$DNS"
+  done
+fi
+
+# For Wi‑Fi interfaces (typically starting with wlan)
 if [ "$WIFI_CUSTOM_DNS" -eq 1 ]; then
-  $PROPTOOL net.dns1 "$DNS1" || log "Failed to set DNS1 for global"
-  $PROPTOOL net.dns2 "$DNS2" || log "Failed to set DNS2 for global"
-  log "Global DNS set to $DNS1/$DNS2 (Wi-Fi overridden)"
+  for iface in $(ls /sys/class/net 2>/dev/null | grep -E '^wlan'); do
+    apply_dns_iptables "$iface" "$DNS"
+  done
+fi
+
+# ─────────────────────────────────────────────────────────────
+# Global DNS override (if needed, e.g. for processes that use the default route)
+if [ "$GLOBAL_DNS_OVERRIDE" -eq 1 ]; then
+  # Apply to default OUTPUT if interface detection fails
+  iptables -t nat -A OUTPUT -p udp --dport 53 -j DNAT --to-destination "${DNS}:53" \
+    || log "Failed to apply global iptables rule (UDP)"
+  iptables -t nat -A OUTPUT -p tcp --dport 53 -j DNAT --to-destination "${DNS}:53" \
+    || log "Failed to apply global iptables rule (TCP)"
+  log "Global DNS redirect applied to all outgoing traffic to ${DNS}"
 fi

@@ -1,23 +1,30 @@
 #!/system/bin/sh
 # liteDNS configuration template
 # Copy this to config.sh on first install.
-#
-# VERSION tag – bump when adding new options or making major changes
-VERSION="003"
 
 # ─────────────────────────────GLOBAL OPTIONS────────────────────────────
 # Verbose logging (detailed service.log entries)
 #   1 = enabled, 0 = silent
 VERBOSE_LOG=1
 
-# IPv6 DNS support (applies to system DNS and dnscrypt-proxy)
-#   1 = enabled, 0 = IPv4 only
-ENABLE_IPV6=1
-
 # Wi-Fi custom DNS override
 #   1 = apply module DNS to Wi-Fi (default)
 #   0 = keep DHCP-provided DNS on Wi-Fi (recommended for people that use custom DNS on their router or AP)
 WIFI_CUSTOM_DNS=1
+
+# Mobile-Data custom DNS override
+#   1 = apply module DNS to mobile-data (default)
+#   0 = keep DHCP-provided DNS on mobile-data
+MOBILE_CUSTOM_DNS=1
+
+# Global DNS override
+#   1 = Apply the module's DNS to all network interfaces (recommended/default).
+#   0 = Only apply custom DNS to interfaces explicitly configured (e.g., Wi-Fi or mobile data);
+#       all other interfaces will continue using their DHCP-provided DNS.
+#   Note: Enabling this option (set to 1) is recommended for most users, as it helps prevent DNS leaks
+#   by ensuring all DNS traffic is redirected through the chosen DNS server. This is the default behavior
+#   in most DNS modules. If you set Wi-Fi or mobile data DNS options to 0, but enable this option,
+#   the global override will still force all interfaces-including Wi-Fi and mobile data-to use the specified DNS.
 
 # ──────────────────────────────DOH OPTIONS──────────────────────────────
 # Enable DNS-over-HTTPS via dnscrypt-proxy
@@ -30,17 +37,15 @@ ENABLE_DOH=1
 DOH_SERVERS_NAME='cloudflare'
 
 # Failsafe IPv4 fallback if DoH fails to start
-#   1 = revert to DNS1/DNS2, 0 = stay on localhost
-FAILSAFE_FALLBACK=1
+#   1 = revert to DNS1/DNS2, 0 = remain on localhost
+#   (Note: Disabled by default because most providers redirect to their own DNS.
+#   Enabling fallback could prevent the use of custom DNS servers if your provider
+#   does this.)
+FAILSAFE_FALLBACK=0
 
 # ──────────────────────────────DNS OPTIONS──────────────────────────────
-# Upstream plaintext DNS servers (Cloudflare defaults)
-DNS1=1.1.1.1
-DNS2=1.0.0.1
-
-# Upstream IPv6 DNS servers (Cloudflare defaults)
-DNS6_1=2606:4700:4700::1111
-DNS6_2=2606:4700:4700::1001
+# Upstream plaintext DNS servers (Cloudflare defaults) - if DoH is enabled, these are only used for fallback
+DNS=1.1.1.1
 
 # ───────────────────────────────────────────────────────────────────────
 # To apply changes: edit any value above and reboot your device.
