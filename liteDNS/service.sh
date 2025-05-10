@@ -121,13 +121,13 @@ start_doh() {
     [ "$FAILSAFE_FALLBACK" -eq 1 ] && log "Fallback to configured DNS: $DNS"
   fi
 }
-log "Exiting start_doh function"
 
 if [ "$ENABLE_DOH" -eq 1 ]; then
   start_doh
 else
   log "DoH not enabled: using configured DNS $DNS"
 fi
+log "Exiting start_doh function"
 
 # ─────────────────────────────────────────────────────────────
 # Apply iptables DNS Redirection
@@ -231,7 +231,7 @@ start_interface_monitor() {
   
   echo $! > "$MONITOR_PID_FILE"
   log "Interface monitor started (PID: $(cat "$MONITOR_PID_FILE"))"
-  trap 'log "Cleaning up interface monitor"; cleanup_previous_monitors' EXIT
+  trap 'log "Trap triggered: Cleaning up interface monitor"; cleanup_previous_monitors' EXIT
 }
 
 # ─────────────────────────────────────────────────────────────
@@ -244,14 +244,14 @@ if [ "$MOBILE_CUSTOM_DNS" -eq 1 ]; then
     apply_dns_iptables "$base_iface" "$DNS"
   done
 fi
-
+log "🔍 (A) applying mobile rules"
 if [ "$WIFI_CUSTOM_DNS" -eq 1 ]; then
   for iface in $(ls /sys/class/net 2>/dev/null | grep -E '^wlan'); do
     local base_iface=$(echo "$iface" | cut -d '@' -f 1)
     apply_dns_iptables "$base_iface" "$DNS"
   done
 fi
-
+log "🔍 (B) applying wifi rules"
 # ─────────────────────────────────────────────────────────────
 # Apply Global DNS Override
 # Redirect all outgoing DNS traffic to the configured DNS server if enabled.
@@ -265,5 +265,6 @@ fi
 # ─────────────────────────────────────────────────────────────
 # Start Interface Monitoring
 # Begin dynamic monitoring of network interfaces after initial configuration.
-
+log "🔍 before starting interface monitor"
 start_interface_monitor
+log "🔍 after start_interface_monitor?"
