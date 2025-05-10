@@ -121,6 +121,7 @@ start_doh() {
     [ "$FAILSAFE_FALLBACK" -eq 1 ] && log "Fallback to configured DNS: $DNS"
   fi
 }
+log "Exiting start_doh function"
 
 if [ "$ENABLE_DOH" -eq 1 ]; then
   start_doh
