@@ -1,82 +1,105 @@
 #!/system/bin/sh
-# liteDNS - Advanced DNS management for Android
-# Handles both static configuration and dynamic interface monitoring
+# liteDNS - Advanced DNS Management for Android
+# This script provides a robust solution for DNS management on Android devices.
+# It handles both static DNS configurations and dynamic interface monitoring.
+# Features:
+# - Dynamic DNS redirection for Wi-Fi and mobile-data interfaces.
+# - Optional support for encrypted DNS (DNS over HTTPS) using dnscrypt-proxy.
+# - Global DNS override for outgoing traffic.
+# - Adaptive monitoring of network interfaces with fallback mechanisms.
 
 # ─────────────────────────────────────────────────────────────
-# Constants and configuration paths
-MODDIR="${0%/*}"
-TEMPLATE_CONF="$MODDIR/dnscrypt-proxy.toml.template"
-TARGET_CONF="$MODDIR/dnscrypt-proxy.toml"
-CONFIG="$MODDIR/config.sh"
-LOG_DIR="$MODDIR/log"
-LOG="$LOG_DIR/service.log"
-DOH_LOG="$LOG_DIR/dnscrypt.log"
-BIN="$MODDIR/bin/dnscrypt-proxy"
-IFACES_FILE="$MODDIR/active_interfaces.txt"
-LOCK_FILE="$MODDIR/litedns.lock"
-PID_FILE="$MODDIR/litedns.pid"
-MONITOR_PID_FILE="$MODDIR/monitor.pid"
+# Constants and Configuration Paths
+# These variables define file paths, constants, and configuration options.
+
+MODDIR="${0%/*}"                           # Directory where the script resides
+TEMPLATE_CONF="$MODDIR/dnscrypt-proxy.toml.template" # Path to the TOML template for dnscrypt-proxy
+TARGET_CONF="$MODDIR/dnscrypt-proxy.toml"  # Generated TOML configuration for dnscrypt-proxy
+CONFIG="$MODDIR/config.sh"                 # User configuration file
+LOG_DIR="$MODDIR/log"                      # Directory for log files
+LOG="$LOG_DIR/service.log"                 # Main log file for the script
+DOH_LOG="$LOG_DIR/dnscrypt.log"            # Log file for dnscrypt-proxy
+BIN="$MODDIR/bin/dnscrypt-proxy"           # Path to the dnscrypt-proxy binary
+IFACES_FILE="$MODDIR/active_interfaces.txt" # File to store active network interfaces
+LOCK_FILE="$MODDIR/litedns.lock"           # Lock file to prevent multiple instances
+PID_FILE="$MODDIR/litedns.pid"             # PID file for the main process
+MONITOR_PID_FILE="$MODDIR/monitor.pid"     # PID file for the interface monitor process
 
 # ─────────────────────────────────────────────────────────────
-# Bootstrap config and logs
-[ ! -d "$LOG_DIR" ] && mkdir -p "$LOG_DIR"
-[ ! -f "$CONFIG" ] && cp "$MODDIR/config.sh.template" "$CONFIG" && chmod 644 "$CONFIG"
-# rotate on each boot
+# Bootstrap Configuration and Logs
+# Ensure necessary directories and files are in place, and initialize logs.
+
+[ ! -d "$LOG_DIR" ] && mkdir -p "$LOG_DIR" # Create log directory if it doesn't exist
+[ ! -f "$CONFIG" ] && cp "$MODDIR/config.sh.template" "$CONFIG" && chmod 644 "$CONFIG" # Initialize default config
+# Rotate the main log file on each boot
 [ -f "$LOG" ] && mv "$LOG" "$LOG.old"
-: > "$LOG"
+: > "$LOG" # Create a fresh log file
 
 # ─────────────────────────────────────────────────────────────
-# Logging helpers
-date_stamp() { date '+%F %T'; }
+# Logging Helpers
+# Functions to log events and handle errors with timestamps.
+
+date_stamp() {
+  # Generate a timestamp in the format YYYY-MM-DD HH:MM:SS
+  date '+%F %T'
+}
+
 log() {
+  # Log a message to the main log file with a timestamp
   echo "[liteDNS] $(date_stamp) – $*" >> "$LOG"
 }
+
 abort() {
+  # Log an error message and terminate the script
   log "ERROR: $*"
   exit 1
 }
 
 # ─────────────────────────────────────────────────────────────
-# Load config values (new config.sh provides a single DNS and DNS flags for Wi‑Fi and Mobile)
+# Load Configuration Values
+# Load user-defined settings from the configuration file. Provide defaults if missing.
+
 . "$CONFIG"
-: "${VERBOSE_LOG:=1}"
-: "${WIFI_CUSTOM_DNS:=1}"
-: "${MOBILE_CUSTOM_DNS:=1}"
-: "${ENABLE_DOH:=0}"
-: "${DOH_SERVERS_NAME:='cloudflare'}"
-: "${FAILSAFE_FALLBACK:=1}"
-: "${DNS:=1.1.1.1}"
-: "${GLOBAL_DNS_OVERRIDE:=1}"
+: "${VERBOSE_LOG:=1}"             # Enable verbose logging (default: enabled)
+: "${WIFI_CUSTOM_DNS:=1}"         # Enable custom DNS for Wi-Fi interfaces
+: "${MOBILE_CUSTOM_DNS:=1}"       # Enable custom DNS for mobile-data interfaces
+: "${ENABLE_DOH:=0}"              # Enable DNS over HTTPS (default: disabled)
+: "${DOH_SERVERS_NAME:='cloudflare'}" # Default DoH server names
+: "${FAILSAFE_FALLBACK:=1}"       # Enable fallback to default DNS
+: "${DNS:=1.1.1.1}"               # Default DNS server
+: "${GLOBAL_DNS_OVERRIDE:=1}"     # Apply global DNS override (default: enabled)
 
 log "service.sh started (DoH=$ENABLE_DOH, DNS=$DNS, WIFI_CUSTOM_DNS=$WIFI_CUSTOM_DNS, MOBILE_CUSTOM_DNS=$MOBILE_CUSTOM_DNS)"
 
 # ─────────────────────────────────────────────────────────────
-# Prepare dnscrypt-proxy.toml from template if DoH is enabled
+# Prepare dnscrypt-proxy.toml Configuration
+# Generate and customize the dnscrypt-proxy TOML configuration file if DoH is enabled.
+
 if [ "$ENABLE_DOH" -eq 1 ]; then
   if [ ! -f "$TARGET_CONF" ]; then
-    cp "$TEMPLATE_CONF" "$TARGET_CONF" || abort "Could not copy toml template"
+    cp "$TEMPLATE_CONF" "$TARGET_CONF" || abort "Could not copy TOML template"
     chmod 644 "$TARGET_CONF"
   fi
-  # Patch server_names with the list from DOH_SERVERS_NAME
+  # Update server_names in the TOML file with the configured DoH servers
   ESC_NAMES=$(printf '%s' "$DOH_SERVERS_NAME" | sed "s/,/','/g")
   sed -i "s|^server_names *=.*|server_names = ['$ESC_NAMES']|" "$TARGET_CONF" \
     || abort "Failed to update server_names"
-  # set bootstrap_resolvers to the configured DNS
+  # Configure bootstrap resolvers in the TOML file
   if echo "$DNS" | grep -q ':'; then
-    # DNS already has a port
     sed -i "s|^bootstrap_resolvers *=.*|bootstrap_resolvers = ['$DNS']|" "$TARGET_CONF"
   else
-    # No port specified, append default port 53
     sed -i "s|^bootstrap_resolvers *=.*|bootstrap_resolvers = ['$DNS:53']|" "$TARGET_CONF"
   fi
   log "Patched TOML → SERVERS=$DOH_SERVERS_NAME BOOTSTRAP=$DNS"
 fi
 
 # ─────────────────────────────────────────────────────────────
-# Start DoH service if enabled
+# Start DNS over HTTPS (DoH) Service
+# Launch dnscrypt-proxy if DoH is enabled and set up necessary iptables rules.
+
 start_doh() {
-  # When DoH starts successfully, use localhost as DNS; otherwise fallback to $DNS
-  LOCAL_DNS="127.0.0.1"
+  # Start the dnscrypt-proxy service and configure fallback mechanisms
+  LOCAL_DNS="127.0.0.1" # Use localhost for DNS if dnscrypt-proxy starts successfully
   if [ ! -x "$BIN" ] || [ ! -f "$TARGET_CONF" ]; then
     log "DoH disabled: missing binary or config"
     return
@@ -85,10 +108,9 @@ start_doh() {
     log "Port 53 in use: skipping dnscrypt-proxy"
     return
   fi
-  # Apply iptables to allow fallback DNS for resolve dnscrypt-proxy
+  # Allow fallback DNS for resolving dnscrypt-proxy's bootstrap
   iptables -t nat -A OUTPUT -p udp --dport 53 -d $DNS -j RETURN
   iptables -t nat -A OUTPUT -p tcp --dport 53 -d $DNS -j RETURN
-  # Add more for other bootstrap IPs if needed
   "$BIN" -config "$TARGET_CONF" >>"$DOH_LOG" 2>&1 &
   sleep 1
   if pgrep -f "$BIN" >/dev/null; then
@@ -96,10 +118,7 @@ start_doh() {
     DNS="$LOCAL_DNS"
   else
     log "dnscrypt-proxy failed to start"
-    if [ "$FAILSAFE_FALLBACK" -eq 1 ]; then
-      DNS="$DNS"
-      log "Fallback to configured DNS: $DNS"
-    fi
+    [ "$FAILSAFE_FALLBACK" -eq 1 ] && log "Fallback to configured DNS: $DNS"
   fi
 }
 
@@ -110,44 +129,32 @@ else
 fi
 
 # ─────────────────────────────────────────────────────────────
-# Function to apply iptables-based DNS redirection on an interface
+# Apply iptables DNS Redirection
+# Redirect DNS traffic on specific interfaces to the configured DNS server.
+
 apply_dns_iptables() {
   local iface="$1"
   local target_dns="$2"
   local base_iface
   
-  # Extract base interface name before any special characters
-  base_iface=$(echo "$iface" | cut -d '@' -f 1)
+  base_iface=$(echo "$iface" | cut -d '@' -f 1) # Extract base interface name
+  [ ! -d "/sys/class/net/$base_iface" ] && [ "$VERBOSE_LOG" -eq 1 ] && log "Interface $base_iface does not exist, skipping" && return 1
   
-  # Check if interface exists
-  if [ ! -d "/sys/class/net/$base_iface" ]; then
-    [ "$VERBOSE_LOG" -eq 1 ] && log "Interface $base_iface does not exist, skipping"
-    return 1
-  fi
-  
-  # Wait a moment for interface to initialize fully (important for dynamic interfaces)
-  sleep 0.5
-  
-  # Check if rules already exist to avoid duplicates
+  sleep 0.5 # Allow time for interface initialization
   if iptables -t nat -C OUTPUT -o "$base_iface" -p udp --dport 53 -j DNAT --to-destination "${target_dns}:53" 2>/dev/null; then
     [ "$VERBOSE_LOG" -eq 1 ] && log "Rules already exist for $base_iface, skipping"
     return 0
   fi
-  
-  # Redirect both UDP and TCP destined to port 53 on the given interface
-  iptables -t nat -A OUTPUT -o "$base_iface" -p udp --dport 53 -j DNAT --to-destination "${target_dns}:53" \
-    || log "Failed to apply iptables rule (UDP) on $base_iface"
-  iptables -t nat -A OUTPUT -o "$base_iface" -p tcp --dport 53 -j DNAT --to-destination "${target_dns}:53" \
-    || log "Failed to apply iptables rule (TCP) on $base_iface"
+  iptables -t nat -A OUTPUT -o "$base_iface" -p udp --dport 53 -j DNAT --to-destination "${target_dns}:53" || log "Failed to apply iptables rule (UDP) on $base_iface"
+  iptables -t nat -A OUTPUT -o "$base_iface" -p tcp --dport 53 -j DNAT --to-destination "${target_dns}:53" || log "Failed to apply iptables rule (TCP) on $base_iface"
   log "Applied iptables DNS redirection on $base_iface to ${target_dns}"
   return 0
 }
 
-
 # ─────────────────────────────────────────────────────────────
-# Interface monitoring system
+# Interface Monitoring System
+# Dynamically monitor and manage DNS rules for active network interfaces.
 
-# Clean up any previous monitoring processes
 cleanup_previous_monitors() {
   if [ -f "$MONITOR_PID_FILE" ]; then
     local old_pid=$(cat "$MONITOR_PID_FILE" 2>/dev/null)
@@ -156,157 +163,106 @@ cleanup_previous_monitors() {
   fi
 }
 
-# Update the list of currently active interfaces
-update_interface_list() {
-  ip -o link show | awk -F': ' '{print $2}' | grep -E '^(wlan|rmnet|pdp|ppp|rmnet_data)' > "$IFACES_FILE"
-}
-
-# Process a newly detected interface
 process_new_interface() {
   local iface="$1"
-  local base_iface
-  
-  # Extract base interface name before any special characters
-  base_iface=$(echo "$iface" | cut -d '@' -f 1)
-  
-  # Skip if not a network interface we care about
+  local base_iface=$(echo "$iface" | cut -d '@' -f 1)
   if ! echo "$base_iface" | grep -qE '^(wlan|rmnet|pdp|ppp|rmnet_data)'; then
     return 0
   fi
-  
-  # Apply rules based on interface type
   case "$base_iface" in
-    wlan*)
-      [ "$WIFI_CUSTOM_DNS" -eq 1 ] && apply_dns_iptables "$base_iface" "$DNS"
-      ;;
-    rmnet*|pdp*|ppp*|rmnet_data*)
-      [ "$MOBILE_CUSTOM_DNS" -eq 1 ] && apply_dns_iptables "$base_iface" "$DNS"
-      ;;
+    wlan*) [ "$WIFI_CUSTOM_DNS" -eq 1 ] && apply_dns_iptables "$base_iface" "$DNS" ;;
+    rmnet*|pdp*|ppp*|rmnet_data*) [ "$MOBILE_CUSTOM_DNS" -eq 1 ] && apply_dns_iptables "$base_iface" "$DNS" ;;
   esac
 }
 
-# Start interface monitoring
 start_interface_monitor() {
-  # Clean up previous monitors
   cleanup_previous_monitors
-  
-  # Process all existing interfaces first
+  log "Processing existing network interfaces..."
   for iface in $(ls /sys/class/net 2>/dev/null | grep -E '^(wlan|rmnet|pdp|ppp|rmnet_data)'); do
-    log "Processing existing interface: $iface"
-    process_new_interface "$iface"
+    local base_iface=$(echo "$iface" | cut -d '@' -f 1)
+    log "Processing existing interface: $base_iface"
+    process_new_interface "$base_iface"
   done
-  
-  # Create initial interface list with base names (without @)
+
   ip -o link show | awk -F': ' '{print $2}' | cut -d '@' -f 1 | grep -E '^(wlan|rmnet|pdp|ppp|rmnet_data)' > "$IFACES_FILE"
   log "Initial interface list created with $(wc -l < "$IFACES_FILE") interfaces"
   
-  # Start the interface monitor in background
   (
-    # Use inotifyd if available (most efficient)
-    if command -v inotifyd >/dev/null; then
-      log "Using inotifyd for interface monitoring"
-      
-      # Monitor /sys/class/net directory for all events (not just create)
-      inotifyd - /sys/class/net:a 2>/dev/null | while read -r line; do
-        # Log raw event for debugging if verbose
-        [ "$VERBOSE_LOG" -eq 1 ] && log "Raw inotify event: $line"
-        
-        # Parse the inotifyd event line (format: /path e mask)
-        local path=$(echo "$line" | awk '{print $1}')
-        local event=$(echo "$line" | awk '{print $2}')
-        
-        # Extract interface name from path
-        local iface=$(basename "$path")
-        
-        # Process interface for any relevant event (create, modify)
-        if [ "$event" = "c" ] || [ "$event" = "C" ] || [ "$event" = "m" ] || [ "$event" = "M" ]; then
-          log "Detected interface event via inotifyd: $iface (event: $event)"
-          process_new_interface "$iface"
-          
-          # Update our interface list (with base names)
-          ip -o link show | awk -F': ' '{print $2}' | cut -d '@' -f 1 | grep -E '^(wlan|rmnet|pdp|ppp|rmnet_data)' > "$IFACES_FILE"
+    if command -v ip >/dev/null; then
+      log "Using ip monitor for interface monitoring"
+      ip monitor link 2>/dev/null | while read -r line; do
+        [ "$VERBOSE_LOG" -eq 1 ] && log "Network event: $line"
+        if echo "$line" | grep -q "state UP"; then
+          local iface=$(echo "$line" | awk '{print $2}' | cut -d '@' -f 1 | sed 's/://g')
+          if echo "$iface" | grep -qE '^(wlan|rmnet|pdp|ppp|rmnet_data)'; then
+            log "Active interface detected: $iface"
+            process_new_interface "$iface"
+            ip -o link show | awk -F': ' '{print $2}' | cut -d '@' -f 1 | grep -E '^(wlan|rmnet|pdp|ppp|rmnet_data)' > "$IFACES_FILE"
+          fi
         fi
       done
     else
-      # Fallback to efficient polling with adaptive sleep
-      log "inotifyd not available, using polling for interface monitoring"
-      
-      local sleep_time=10
+      log "ip monitor not available, using adaptive polling"
+      local sleep_time=5
       local changes_detected=0
-      
       while true; do
-        # Get current interfaces (handle special characters)
-        local current_ifaces=$(ip -o link show | awk -F': ' '{print $2}' | cut -d '@' -f 1 | grep -E '^(wlan|rmnet|pdp|ppp|rmnet_data)')
-        
-        # Find new interfaces by comparing with saved list
-        for iface in $current_ifaces; do
-          if ! grep -q "^$iface$" "$IFACES_FILE" 2>/dev/null; then
-            log "Detected new interface via polling: $iface"
-            process_new_interface "$iface"
-            changes_detected=1
+        for iface in $(ls /sys/class/net/ 2>/dev/null); do
+          local base_iface=$(echo "$iface" | cut -d '@' -f 1)
+          if echo "$base_iface" | grep -qE '^(wlan|rmnet|pdp|ppp|rmnet_data)'; then
+            if [ -f "/sys/class/net/$iface/operstate" ] && [ "$(cat "/sys/class/net/$iface/operstate")" = "up" ] && ! grep -q "^$base_iface$" "$IFACES_FILE" 2>/dev/null; then
+              log "New active interface detected: $base_iface"
+              process_new_interface "$base_iface"
+              echo "$base_iface" >> "$IFACES_FILE"
+              changes_detected=1
+            fi
           fi
         done
-        
-        # Update interface list
-        echo "$current_ifaces" > "$IFACES_FILE"
-        
-        # Adaptive sleep: shorter if changes detected, longer if stable
         if [ "$changes_detected" -eq 1 ]; then
           sleep_time=5
           changes_detected=0
         else
-          # Gradually increase sleep time up to 30 seconds if no changes
-          if [ "$sleep_time" -lt 30 ]; then
-            sleep_time=$((sleep_time + 5))
-          fi
+          [ "$sleep_time" -lt 30 ] && sleep_time=$((sleep_time + 5))
         fi
-        
-        # Sleep to reduce battery impact
         sleep $sleep_time
       done
     fi
   ) &
   
-  # Save monitor PID
   echo $! > "$MONITOR_PID_FILE"
-  log "Started interface monitor (PID: $(cat "$MONITOR_PID_FILE"))"
-  
-  # Set trap to ensure monitor is killed when script exits
+  log "Interface monitor started (PID: $(cat "$MONITOR_PID_FILE"))"
   trap 'log "Cleaning up interface monitor"; cleanup_previous_monitors' EXIT
 }
 
 # ─────────────────────────────────────────────────────────────
-# Apply iptables rules based on interface type
+# Apply Initial DNS Rules
+# Apply DNS redirection rules for active Wi-Fi and mobile-data interfaces.
 
-# For mobile-data interfaces (rmnet, pdp, ppp, rmnet_data)
 if [ "$MOBILE_CUSTOM_DNS" -eq 1 ]; then
   for iface in $(ls /sys/class/net 2>/dev/null | grep -E '^(rmnet|pdp|ppp|rmnet_data)'); do
-    # Extract base interface name before any special characters
-    base_iface=$(echo "$iface" | cut -d '@' -f 1)
+    local base_iface=$(echo "$iface" | cut -d '@' -f 1)
     apply_dns_iptables "$base_iface" "$DNS"
   done
 fi
 
-# For Wi‑Fi interfaces (typically starting with wlan)
 if [ "$WIFI_CUSTOM_DNS" -eq 1 ]; then
   for iface in $(ls /sys/class/net 2>/dev/null | grep -E '^wlan'); do
-    # Extract base interface name before any special characters
-    base_iface=$(echo "$iface" | cut -d '@' -f 1)
+    local base_iface=$(echo "$iface" | cut -d '@' -f 1)
     apply_dns_iptables "$base_iface" "$DNS"
   done
 fi
 
 # ─────────────────────────────────────────────────────────────
-# Global DNS override (if needed, e.g. for processes that use the default route)
+# Apply Global DNS Override
+# Redirect all outgoing DNS traffic to the configured DNS server if enabled.
+
 if [ "$GLOBAL_DNS_OVERRIDE" -eq 1 ]; then
-  # Apply to default OUTPUT if interface detection fails
-  iptables -t nat -A OUTPUT -p udp --dport 53 -j DNAT --to-destination "${DNS}:53" \
-    || log "Failed to apply global iptables rule (UDP)"
-  iptables -t nat -A OUTPUT -p tcp --dport 53 -j DNAT --to-destination "${DNS}:53" \
-    || log "Failed to apply global iptables rule (TCP)"
+  iptables -t nat -A OUTPUT -p udp --dport 53 -j DNAT --to-destination "${DNS}:53" || log "Failed to apply global iptables rule (UDP)"
+  iptables -t nat -A OUTPUT -p tcp --dport 53 -j DNAT --to-destination "${DNS}:53" || log "Failed to apply global iptables rule (TCP)"
   log "Global DNS redirect applied to all outgoing traffic to ${DNS}"
 fi
 
 # ─────────────────────────────────────────────────────────────
-# Start the interface monitor after all initial rules are applied
+# Start Interface Monitoring
+# Begin dynamic monitoring of network interfaces after initial configuration.
+
 start_interface_monitor

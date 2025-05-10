@@ -1,56 +1,76 @@
 #!/system/bin/sh
-# liteDNS configuration template
-# Copy this to config.sh on first install.
+# liteDNS Configuration Template
+# Copy this file to config.sh on the first install.
+# This file contains user-configurable options for liteDNS, allowing you to customize
+# how DNS settings are applied to your device. Each option is explained in detail below.
 
 # ─────────────────────────────GLOBAL OPTIONS────────────────────────────
-# Verbose logging (detailed service.log entries)
-#   1 = enabled, 0 = silent
+# Verbose Logging
+# - Enables detailed entries in the service.log file for troubleshooting and monitoring.
+# - Values:
+#   1 = Enabled (default, recommended for troubleshooting)
+#   0 = Disabled (minimal logging)
 VERBOSE_LOG=1
 
-# Wi-Fi custom DNS override
-#   1 = apply module DNS to Wi-Fi (default)
-#   0 = keep DHCP-provided DNS on Wi-Fi (recommended for people that use custom DNS on their router or AP)
+# Wi-Fi Custom DNS Override
+# - Determines whether the module's custom DNS settings are applied to Wi-Fi connections.
+# - Values:
+#   1 = Apply the module's custom DNS to Wi-Fi (default and recommended for most users)
+#   0 = Use DNS provided by the router or access point (useful if your router is already configured with custom DNS)
 WIFI_CUSTOM_DNS=1
 
-# Mobile-Data custom DNS override
-#   1 = apply module DNS to mobile-data (default)
-#   0 = keep DHCP-provided DNS on mobile-data
+# Mobile-Data Custom DNS Override
+# - Determines whether the module's custom DNS settings are applied to mobile-data connections.
+# - Values:
+#   1 = Apply the module's custom DNS to mobile-data (default and recommended for privacy)
+#   0 = Use DNS provided by your mobile carrier
 MOBILE_CUSTOM_DNS=1
 
-# Global DNS override
-#   1 = Apply the module's DNS to all network interfaces (recommended/default).
-#   0 = Only apply custom DNS to interfaces explicitly configured (e.g., Wi-Fi or mobile data);
-#       all other interfaces will continue using their DHCP-provided DNS.
-#   Note: Enabling this option (set to 1) is recommended for most users, as it helps prevent DNS leaks
-#   by ensuring all DNS traffic is redirected through the chosen DNS server. This is the default behavior
-#   in most DNS modules. If you set Wi-Fi or mobile data DNS options to 0, but enable this option,
-#   the global override will still force all interfaces-including Wi-Fi and mobile data-to use the specified DNS.
-#
-#   ⚠️ If you use a VPN, please note that enabling this option may cause issues with some VPNs when DoH is disabled.
+# Global DNS Override
+# - Forces all network interfaces to use the module's DNS, redirecting DNS traffic globally.
+# - This option helps prevent DNS leaks by ensuring that all DNS traffic is routed through the specified DNS server.
+# - Values:
+#   1 = Enabled (default and recommended for most users to ensure privacy and consistency)
+#   0 = Disabled (only applies custom DNS to explicitly configured interfaces like Wi-Fi or mobile data)
+# - Notes:
+#   • If Wi-Fi or mobile data DNS options are set to 0, enabling this option will still force all interfaces to use the specified DNS.
+#   • ⚠️ Be cautious when using this option with VPNs, as it may conflict with their DNS routing when DoH is disabled.
 GLOBAL_DNS_OVERRIDE=1
 
 # ──────────────────────────────DOH OPTIONS──────────────────────────────
-# Enable DNS-over-HTTPS via dnscrypt-proxy
-#   1 = enabled, 0 = disabled
+# Enable DNS-over-HTTPS (DoH)
+# - Enables the use of encrypted DNS queries via dnscrypt-proxy.
+# - Values:
+#   1 = Enabled (recommended for privacy and security)
+#   0 = Disabled
 ENABLE_DOH=1
 
-# Which DoH server(s) to use:
-#   • Use provider names from the official dnscrypt-proxy public-resolvers list
-#   • Multiple can be separated by commas (e.g., cloudflare,quad9,google)
+# DoH Server Selection
+# - Specifies the DoH servers to use for encrypted DNS queries.
+# - Use provider names from the official dnscrypt-proxy public-resolvers list.
+# - Multiple servers can be specified, separated by commas (e.g., cloudflare,quad9,google).
 DOH_SERVERS_NAME='cloudflare'
 
-# Failsafe IPv4 fallback if DoH fails to start
-#   1 = revert to DNS1/DNS2, 0 = remain on localhost
-#   (Note: Disabled by default because most providers redirect to their own DNS.
-#   Enabling fallback could prevent the use of custom DNS servers if your provider
-#   does this.)
+# Failsafe IPv4 Fallback
+# - Determines the behavior if DoH fails to start.
+# - Values:
+#   1 = Revert to plaintext DNS (specified in the DNS option below)
+#   0 = Remain on localhost (default, recommended for stricter privacy)
+# - Notes:
+#   • Most ISPs redirect to their own DNS servers, so enabling fallback may result in unintended DNS usage.
 FAILSAFE_FALLBACK=0
 
 # ──────────────────────────────DNS OPTIONS──────────────────────────────
-# Upstream plaintext DNS servers (Cloudflare defaults) - if DoH is enabled, these are only used for fallback and download dnscrypt-proxy resolvers
+# Upstream Plaintext DNS Servers
+# - Specifies the plaintext DNS servers used for fallback and downloading dnscrypt-proxy resolvers.
+# - These are only used when DoH is disabled or fails.
+# - Default: Cloudflare's DNS (1.1.1.1).
 DNS=1.1.1.1
 
-# ───────────────────────────────────────────────────────────────────────
-# To apply changes: edit any value above and reboot your device.
-# Advanced users can also edit dnscrypt-proxy.toml after first boot.
-# (if you don’t know where to find it, don’t edit it)
+# ──────────────────────────────USER INSTRUCTIONS────────────────────────
+# To Apply Changes:
+# - Edit any value above and reboot your device to apply the new settings.
+#
+# Advanced Users:
+# - After the first boot, you can also edit the dnscrypt-proxy.toml configuration file for additional customization.
+# - ⚠️ If you are unsure where to find or how to edit this file, it is best to avoid modifying it.
