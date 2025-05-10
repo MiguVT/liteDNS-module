@@ -6,7 +6,7 @@
 
 ## ✅ Key Features
 
-* ⚙️ **Magisk & KernelSU compatible** (uses `resetprop -n` or `setprop` fallback)
+* ⚙️ **Magisk & KernelSU compatible** (uses `iptables` for DNS redirection, that is present in all Android kernels)
 * 🔧 **Systemless DNS override**—no writes to `/system`, `/vendor`, or `/product`
 * 🔍 **Interface-aware**: applies DNS only to mobile‐data interfaces (`rmnet*`, `pdp*`, `ppp*`)
 * 🌐 **Optional DoH** via auto-downloaded `dnscrypt-proxy` (latest GitHub release)
@@ -29,33 +29,11 @@
 
 ## ⚙️ Configuration
 
-After install, edit `/data/adb/modules/liteDNS/config.sh` to tweak behavior:
-
-```bash
-# Whether to enable DNS-over-HTTPS (1=Yes, 0=No)
-ENABLE_DOH=1
-
-# Whether to apply IPv6 DNS (1=Yes, 0=No)
-ENABLE_IPV6=1
-
-# Verbose logging (1=On, 0=Off)
-VERBOSE_LOG=1
-
-# Fallback to standard DNS if DoH fails (1=Yes, 0=No)
-FAILSAFE_FALLBACK=1
-
-# Custom IPv4 DNS upstream (used if DoH disabled or fallback)
-DNS1=1.1.1.1
-DNS2=1.0.0.1
-
-# Custom IPv6 DNS upstream (used if ENABLE_IPV6=1)
-DNS6_1=2606:4700:4700::1111
-DNS6_2=2606:4700:4700::1001
-```
+After install, edit `/data/adb/modules/liteDNS/config.sh` to tweak behavior. Everything is commented for clarity.
 
 **Notes:**
 
-* Editing these variables and **rebooting** is all that’s required.
+* Editing the file and **rebooting** is all that’s required.
 * Reflashing give you the option to launch the interactive config wizard again.
 
 ---
@@ -74,13 +52,7 @@ DNS6_2=2606:4700:4700::1001
   cat /data/adb/modules/liteDNS/dnscrypt.log
   ```
 
-* **DoH proxy stderr**:
-
-  ```bash
-  cat /data/adb/modules/liteDNS/dnscrypt-fail.log
-  ```
-
-Logs rotate at each boot (`.bak` backup).
+Logs rotate at each boot.
 
 ---
 
