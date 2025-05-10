@@ -237,7 +237,7 @@ start_interface_monitor() {
 # ─────────────────────────────────────────────────────────────
 # Apply Initial DNS Rules
 # Apply DNS redirection rules for active Wi-Fi and mobile-data interfaces.
-
+log "🔍 (0) Test123"
 if [ "$MOBILE_CUSTOM_DNS" -eq 1 ]; then
   for iface in $(ls /sys/class/net 2>/dev/null | grep -E '^(rmnet|pdp|ppp|rmnet_data)'); do
     local base_iface=$(echo "$iface" | cut -d '@' -f 1)
