@@ -163,32 +163,56 @@ log "Exiting start_doh function"
 # Apply iptables DNS Redirection
 # Redirect DNS traffic on specific interfaces to the configured DNS server.
 
+# Enhance logging in apply_dns_iptables to debug rule application
 apply_dns_iptables() {
   local iface="$1"
   local target_dns="$2"
-  
+
   log "DEBUG: Entering apply_dns_iptables for interface $iface with DNS $target_dns"
-  
-  [ ! -d "/sys/class/net/$iface" ] && [ "$VERBOSE_LOG" -eq 1 ] && log "Interface $iface does not exist, skipping" && return 1
-  
-  log "DEBUG: Interface $iface exists, proceeding with iptables rules"
-  sleep 0.5 # Allow time for interface initialization
-  
-  if iptables -t nat -C OUTPUT -o "$iface" -p udp --dport 53 -j DNAT --to-destination "${target_dns}:53" 2>/dev/null; then
-    [ "$VERBOSE_LOG" -eq 1 ] && log "Rules already exist for $iface, skipping"
-    log "DEBUG: Exiting apply_dns_iptables - rules already exist"
-    return 0
+
+  if [ ! -d "/sys/class/net/$iface" ]; then
+    log "ERROR: Interface $iface does not exist, skipping"
+    return 1
   fi
-  
-  log "DEBUG: Adding iptables UDP rule for $iface"
-  iptables -t nat -A OUTPUT -o "$iface" -p udp --dport 53 -j DNAT --to-destination "${target_dns}:53" || { log "Failed to apply iptables rule (UDP) on $iface"; log "DEBUG: UDP rule failed"; }
-  
-  log "DEBUG: Adding iptables TCP rule for $iface"
-  iptables -t nat -A OUTPUT -o "$iface" -p tcp --dport 53 -j DNAT --to-destination "${target_dns}:53" || { log "Failed to apply iptables rule (TCP) on $iface"; log "DEBUG: TCP rule failed"; }
-  
+
+  log "DEBUG: Interface $iface exists, proceeding with iptables rules"
+
+  # Remove existing rules to avoid conflicts
+  iptables -t nat -D OUTPUT -o "$iface" -p udp --dport 53 -j DNAT --to-destination "${target_dns}:53" 2>/dev/null
+  iptables -t nat -D OUTPUT -o "$iface" -p tcp --dport 53 -j DNAT --to-destination "${target_dns}:53" 2>/dev/null
+
+  # Add new rules
+  iptables -t nat -A OUTPUT -o "$iface" -p udp --dport 53 -j DNAT --to-destination "${target_dns}:53" || {
+    log "ERROR: Failed to apply iptables rule (UDP) on $iface";
+    return 1;
+  }
+
+  iptables -t nat -A OUTPUT -o "$iface" -p tcp --dport 53 -j DNAT --to-destination "${target_dns}:53" || {
+    log "ERROR: Failed to apply iptables rule (TCP) on $iface";
+    return 1;
+  }
+
   log "Applied iptables DNS redirection on $iface to ${target_dns}"
   log "DEBUG: Exiting apply_dns_iptables successfully"
   return 0
+}
+
+# Add additional logging to process_new_interface
+process_new_interface() {
+  local iface="$1"
+  log "DEBUG: Entering process_new_interface for $iface"
+
+  if echo "$iface" | grep -q "rmnet_data"; then
+    log "DEBUG: Processing mobile interface $iface (MOBILE_CUSTOM_DNS=$MOBILE_CUSTOM_DNS)"
+    [ "$MOBILE_CUSTOM_DNS" -eq 1 ] && apply_dns_iptables "$iface" "$DNS"
+  elif echo "$iface" | grep -q "wlan"; then
+    log "DEBUG: Processing WiFi interface $iface (WIFI_CUSTOM_DNS=$WIFI_CUSTOM_DNS)"
+    [ "$WIFI_CUSTOM_DNS" -eq 1 ] && apply_dns_iptables "$iface" "$DNS"
+  else
+    log "DEBUG: Interface $iface is not a supported type, skipping"
+  fi
+
+  log "DEBUG: Exiting process_new_interface for $iface"
 }
 
 # ─────────────────────────────────────────────────────────────
@@ -224,13 +248,14 @@ process_new_interface() {
 
 # Function to start monitoring network interfaces
 # Monitors for changes in interface states and processes them dynamically
+# Add debug logs to confirm monitoring subprocess is running
 start_interface_monitor() {
   log "DEBUG: Entering start_interface_monitor"
   cleanup_previous_monitors
   log "DEBUG: Previous monitors cleaned up"
 
   # Process existing interfaces at startup
-  log "Processing existing network interfaces..."
+  log "DEBUG: Processing existing network interfaces at startup"
   for iface in $(ls /sys/class/net 2>/dev/null); do
     log "DEBUG: Found existing interface: $iface"
     process_new_interface "$iface"
@@ -240,9 +265,9 @@ start_interface_monitor() {
   log "DEBUG: Starting interface monitor subprocess"
   (
     if command -v ip >/dev/null; then
-      log "Using ip monitor for interface monitoring"
+      log "DEBUG: Using ip monitor for interface monitoring"
       ip monitor link 2>/dev/null | while read -r line; do
-        [ "$VERBOSE_LOG" -eq 1 ] && log "Network event: $line"
+        log "DEBUG: Network event detected: $line"
         if echo "$line" | grep -q "state UP"; then
           local iface=$(echo "$line" | awk '{print $2}' | cut -d '@' -f 1 | sed 's/://g')
           log "DEBUG: Detected interface state change: $iface"
@@ -250,7 +275,7 @@ start_interface_monitor() {
         fi
       done
     else
-      log "ip monitor not available, using adaptive polling"
+      log "DEBUG: ip monitor not available, using adaptive polling"
       while true; do
         for iface in $(ls /sys/class/net/ 2>/dev/null); do
           if [ -f "/sys/class/net/$iface/operstate" ] && [ "$(cat "/sys/class/net/$iface/operstate")" = "up" ]; then
@@ -264,7 +289,7 @@ start_interface_monitor() {
   ) &
 
   echo $! > "$MONITOR_PID_FILE"
-  log "Interface monitor started (PID: $(cat "$MONITOR_PID_FILE"))"
+  log "DEBUG: Interface monitor started (PID: $(cat "$MONITOR_PID_FILE"))"
   log "DEBUG: Exiting start_interface_monitor"
   trap 'log "Trap triggered: Cleaning up interface monitor"; cleanup_previous_monitors' EXIT
 }
