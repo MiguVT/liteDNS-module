@@ -8,6 +8,8 @@
         "getprop",
         "iface",
         "IFACES",
+        "INOTIFY",
+        "inotifyd",
         "inotifywait",
         "litedns",
         "ltnp",

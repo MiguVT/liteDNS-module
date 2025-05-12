@@ -229,9 +229,6 @@ cleanup_previous_monitors() {
 }
 
 # Function to start monitoring network interfaces
-# Monitors for changes in interface states and processes them dynamically
-# Add debug logs to confirm monitoring subprocess is running
-# Replace ip monitor with inotifywait for interface monitoring
 start_interface_monitor() {
   log "DEBUG: Entering start_interface_monitor"
   cleanup_previous_monitors
@@ -247,24 +244,19 @@ start_interface_monitor() {
   # Start monitoring for interface changes
   log "DEBUG: Starting interface monitor subprocess"
   (
-    if command -v inotifywait >/dev/null; then
-      log "DEBUG: Using inotifywait for interface monitoring"
-      inotifywait -m /sys/class/net -e create -e delete 2>/dev/null | while read -r path action iface; do
-        log "DEBUG: Network event detected: $action on $iface"
-        if [ "$action" = "CREATE" ]; then
-          log "DEBUG: Detected new interface: $iface"
-          process_new_interface "$iface"
-        fi
-      done
-      log "DEBUG: inotifywait exited unexpectedly"
+    if command -v inotifyd >/dev/null; then
+      log "DEBUG: Using inotifyd for interface monitoring"
+      inotifyd "$MODDIR/inotifyd-handler.sh" /sys/class/net &
+      log "DEBUG: inotifyd handler script started"
     else
-      log "DEBUG: inotifywait not available, using adaptive polling"
+      log "DEBUG: inotifyd not available, using adaptive polling"
+      log "inotifyd not found, using polling method, this may be less efficient and we don't officially support it"
       while true; do
         for iface in $(ls /sys/class/net/ 2>/dev/null); do
           if [ -f "/sys/class/net/$iface/operstate" ] && [ "$(cat "/sys/class/net/$iface/operstate")" = "up" ]; then
             log "DEBUG: Detected active interface: $iface"
             process_new_interface "$iface"
-          fi
+          end
         done
         sleep 5
       done
