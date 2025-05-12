@@ -212,7 +212,7 @@ process_new_interface() {
     [ "$WIFI_CUSTOM_DNS" -eq 1 ] && apply_dns_iptables "$iface" "$DNS"
   else
     log "DEBUG: Interface $iface is not a supported type, skipping"
-  }
+  fi
 
   log "DEBUG: Exiting process_new_interface for $iface"
 }
@@ -314,7 +314,7 @@ log "DEBUG: Finished initial DNS rules application"
 # Apply Global DNS Override
 # Redirect all outgoing DNS traffic to the configured DNS server if enabled.
 
-if [ "$GLOBAL_DNS_OVERRIDE" -eq 1 ]; then
+if [ "$GLOBAL_DNS_OVERRIDE" -eq 1]; then
   iptables -t nat -A OUTPUT -p udp --dport 53 -j DNAT --to-destination "${DNS}:53" || log "Failed to apply global iptables rule (UDP)"
   iptables -t nat -A OUTPUT -p tcp --dport 53 -j DNAT --to-destination "${DNS}:53" || log "Failed to apply global iptables rule (TCP)"
   log "Global DNS redirect applied to all outgoing traffic to ${DNS}"
