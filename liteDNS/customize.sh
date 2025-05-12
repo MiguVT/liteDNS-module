@@ -118,7 +118,7 @@ fi
 # 3️⃣ Bootstrap Configuration
 # Creates a new configuration file from the template if none exists.
 
-if [ "$CONF_DELETED" -eq 1 ] then
+if [ "$CONF_DELETED" -eq 1 ]; then
   cp "$TEMPLATE" "$CONFIG" || abort "❌ Could not copy config.sh.template → config.sh (Step 3)"
   chmod 644 "$CONFIG"
 else
