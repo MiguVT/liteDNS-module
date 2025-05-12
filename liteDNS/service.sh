@@ -197,25 +197,24 @@ apply_dns_iptables() {
   return 0
 }
 
-# Add additional logging to process_new_interface
+# Update process_new_interface to recognize rmnet_ipa0 as a valid mobile interface
 process_new_interface() {
-  local raw_iface="$1"
-  # Remove any @master suffix (e.g. rmnet_data3@rmnet_ipa0 → rmnet_data3)
-  local iface="${raw_iface%@*}"
+  local iface="$1"
+  log "DEBUG: Entering process_new_interface for $iface"
 
-  log "DEBUG: Processing new interface → $iface"
-
-  if echo "$iface" | grep -qE '^rmnet_data[0-9]+'; then
-    log "DEBUG: Mobile APN detected: $iface (MOBILE_CUSTOM_DNS=$MOBILE_CUSTOM_DNS)"
+  # Check for mobile data interface
+  if echo "$iface" | grep -qE "^rmnet"; then
+    log "DEBUG: Processing mobile interface $iface (MOBILE_CUSTOM_DNS=$MOBILE_CUSTOM_DNS)"
     [ "$MOBILE_CUSTOM_DNS" -eq 1 ] && apply_dns_iptables "$iface" "$DNS"
-
-  elif echo "$iface" | grep -qE '^wlan[0-9]*$'; then
-    log "DEBUG: Wi-Fi interface detected: $iface (WIFI_CUSTOM_DNS=$WIFI_CUSTOM_DNS)"
+  # Check for Wi-Fi interface
+  elif echo "$iface" | grep -q "wlan"; then
+    log "DEBUG: Processing WiFi interface $iface (WIFI_CUSTOM_DNS=$WIFI_CUSTOM_DNS)"
     [ "$WIFI_CUSTOM_DNS" -eq 1 ] && apply_dns_iptables "$iface" "$DNS"
-
   else
-    log "DEBUG: Unsupported interface: $iface, skipping"
-  fi
+    log "DEBUG: Interface $iface is not a supported type, skipping"
+  }
+
+  log "DEBUG: Exiting process_new_interface for $iface"
 }
 
 # ─────────────────────────────────────────────────────────────
@@ -282,12 +281,12 @@ start_interface_monitor() {
 # Apply DNS redirection rules for active Wi-Fi and mobile-data interfaces.
 log "DEBUG: Starting initial DNS rules application"
 
+# Update mobile interface detection in initial DNS rules application
 if [ "$MOBILE_CUSTOM_DNS" -eq 1 ]; then
   log "DEBUG: Processing mobile interfaces for initial setup"
-  mobile_interfaces=$(ls /sys/class/net 2>/dev/null \
-                    | grep -E '^rmnet_data[0-9]+(@|$)')
+  mobile_interfaces=$(ls /sys/class/net 2>/dev/null | grep -E '^rmnet')
   log "DEBUG: Found mobile interfaces: $mobile_interfaces"
-  
+
   for iface in $mobile_interfaces; do
     base_iface=$(echo "$iface" | cut -d '@' -f 1)
     log "DEBUG: Processing mobile interface: $base_iface"
