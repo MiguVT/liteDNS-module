@@ -1,15 +1,24 @@
 {
     "cSpell.words": [
+        "armeabi",
         "DNAT",
         "dnscrypt",
         "dport",
+        "getevent",
+        "getprop",
         "iface",
         "IFACES",
         "litedns",
         "ltnp",
         "MODDIR",
+        "MODID",
+        "MODPATH",
         "operstate",
+        "Reflash",
         "rmnet",
+        "toybox",
+        "VOLUMEDOWN",
+        "VOLUMEUP",
         "wlan"
     ]
 }
