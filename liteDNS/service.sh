@@ -256,7 +256,7 @@ start_interface_monitor() {
           if [ -f "/sys/class/net/$iface/operstate" ] && [ "$(cat "/sys/class/net/$iface/operstate")" = "up" ]; then
             log "DEBUG: Detected active interface: $iface"
             process_new_interface "$iface"
-          end
+          fi
         done
         sleep 5
       done
