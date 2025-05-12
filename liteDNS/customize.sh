@@ -121,6 +121,9 @@ fi
 if [ "$CONF_DELETED" -eq 1 ] && [ ! -f "$FINAL_CONFIG" ]; then
   cp "$TEMPLATE" "$CONFIG" || abort "❌ Could not copy config.sh.template → config.sh (Step 3)"
   chmod 644 "$CONFIG"
+else
+  cp "$FINAL_CONFIG" "$CONFIG" || abort "❌ Could not copy config.sh → config.sh (Step 3)"
+  chmod 644 "$CONFIG"
 fi
 if [ "$BRANCH" = "dev" ]; then
   ui_print "ℹ️ Step 3 success"
