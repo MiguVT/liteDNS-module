@@ -231,6 +231,7 @@ cleanup_previous_monitors() {
 # Function to start monitoring network interfaces
 # Monitors for changes in interface states and processes them dynamically
 # Add debug logs to confirm monitoring subprocess is running
+# Replace ip monitor with inotifywait for interface monitoring
 start_interface_monitor() {
   log "DEBUG: Entering start_interface_monitor"
   cleanup_previous_monitors
@@ -246,18 +247,18 @@ start_interface_monitor() {
   # Start monitoring for interface changes
   log "DEBUG: Starting interface monitor subprocess"
   (
-    if command -v ip >/dev/null; then
-      log "DEBUG: Using ip monitor for interface monitoring"
-      ip monitor link 2>/dev/null | while read -r line; do
-        log "DEBUG: Network event detected: $line"
-        if echo "$line" | grep -q "state UP"; then
-          local iface=$(echo "$line" | awk '{print $2}' | cut -d '@' -f 1 | sed 's/://g')
-          log "DEBUG: Detected interface state change: $iface"
+    if command -v inotifywait >/dev/null; then
+      log "DEBUG: Using inotifywait for interface monitoring"
+      inotifywait -m /sys/class/net -e create -e delete 2>/dev/null | while read -r path action iface; do
+        log "DEBUG: Network event detected: $action on $iface"
+        if [ "$action" = "CREATE" ]; then
+          log "DEBUG: Detected new interface: $iface"
           process_new_interface "$iface"
         fi
       done
+      log "DEBUG: inotifywait exited unexpectedly"
     else
-      log "DEBUG: ip monitor not available, using adaptive polling"
+      log "DEBUG: inotifywait not available, using adaptive polling"
       while true; do
         for iface in $(ls /sys/class/net/ 2>/dev/null); do
           if [ -f "/sys/class/net/$iface/operstate" ] && [ "$(cat "/sys/class/net/$iface/operstate")" = "up" ]; then
@@ -314,7 +315,7 @@ log "DEBUG: Finished initial DNS rules application"
 # Apply Global DNS Override
 # Redirect all outgoing DNS traffic to the configured DNS server if enabled.
 
-if [ "$GLOBAL_DNS_OVERRIDE" -eq 1]; then
+if [ "$GLOBAL_DNS_OVERRIDE" -eq 1 ]; then
   iptables -t nat -A OUTPUT -p udp --dport 53 -j DNAT --to-destination "${DNS}:53" || log "Failed to apply global iptables rule (UDP)"
   iptables -t nat -A OUTPUT -p tcp --dport 53 -j DNAT --to-destination "${DNS}:53" || log "Failed to apply global iptables rule (TCP)"
   log "Global DNS redirect applied to all outgoing traffic to ${DNS}"

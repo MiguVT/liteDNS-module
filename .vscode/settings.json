@@ -8,6 +8,7 @@
         "getprop",
         "iface",
         "IFACES",
+        "inotifywait",
         "litedns",
         "ltnp",
         "MODDIR",
