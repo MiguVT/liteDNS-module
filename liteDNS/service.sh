@@ -199,20 +199,23 @@ apply_dns_iptables() {
 
 # Add additional logging to process_new_interface
 process_new_interface() {
-  local iface="$1"
-  log "DEBUG: Entering process_new_interface for $iface"
+  local raw_iface="$1"
+  # Remove any @master suffix (e.g. rmnet_data3@rmnet_ipa0 → rmnet_data3)
+  local iface="${raw_iface%@*}"
 
-  if echo "$iface" | grep -q "rmnet_data"; then
-    log "DEBUG: Processing mobile interface $iface (MOBILE_CUSTOM_DNS=$MOBILE_CUSTOM_DNS)"
+  log "DEBUG: Processing new interface → $iface"
+
+  if echo "$iface" | grep -qE '^rmnet_data[0-9]+'; then
+    log "DEBUG: Mobile APN detected: $iface (MOBILE_CUSTOM_DNS=$MOBILE_CUSTOM_DNS)"
     [ "$MOBILE_CUSTOM_DNS" -eq 1 ] && apply_dns_iptables "$iface" "$DNS"
-  elif echo "$iface" | grep -q "wlan"; then
-    log "DEBUG: Processing WiFi interface $iface (WIFI_CUSTOM_DNS=$WIFI_CUSTOM_DNS)"
-    [ "$WIFI_CUSTOM_DNS" -eq 1 ] && apply_dns_iptables "$iface" "$DNS"
-  else
-    log "DEBUG: Interface $iface is not a supported type, skipping"
-  fi
 
-  log "DEBUG: Exiting process_new_interface for $iface"
+  elif echo "$iface" | grep -qE '^wlan[0-9]*$'; then
+    log "DEBUG: Wi-Fi interface detected: $iface (WIFI_CUSTOM_DNS=$WIFI_CUSTOM_DNS)"
+    [ "$WIFI_CUSTOM_DNS" -eq 1 ] && apply_dns_iptables "$iface" "$DNS"
+
+  else
+    log "DEBUG: Unsupported interface: $iface, skipping"
+  fi
 }
 
 # ─────────────────────────────────────────────────────────────
@@ -224,26 +227,6 @@ cleanup_previous_monitors() {
     [ -n "$old_pid" ] && kill "$old_pid" >/dev/null 2>&1
     rm -f "$MONITOR_PID_FILE"
   fi
-}
-
-# Simplify interface checks to match "rmnet_data" for mobile data and "wlan" for Wi-Fi
-process_new_interface() {
-  local iface="$1"
-  log "DEBUG: Entering process_new_interface for $iface"
-
-  # Check for mobile data interface
-  if echo "$iface" | grep -q "rmnet_data"; then
-    log "DEBUG: Processing mobile interface $iface (MOBILE_CUSTOM_DNS=$MOBILE_CUSTOM_DNS)"
-    [ "$MOBILE_CUSTOM_DNS" -eq 1 ] && apply_dns_iptables "$iface" "$DNS"
-  # Check for Wi-Fi interface
-  elif echo "$iface" | grep -q "wlan"; then
-    log "DEBUG: Processing WiFi interface $iface (WIFI_CUSTOM_DNS=$WIFI_CUSTOM_DNS)"
-    [ "$WIFI_CUSTOM_DNS" -eq 1 ] && apply_dns_iptables "$iface" "$DNS"
-  else
-    log "DEBUG: Interface $iface is not a supported type, skipping"
-  fi
-
-  log "DEBUG: Exiting process_new_interface for $iface"
 }
 
 # Function to start monitoring network interfaces
@@ -301,7 +284,8 @@ log "DEBUG: Starting initial DNS rules application"
 
 if [ "$MOBILE_CUSTOM_DNS" -eq 1 ]; then
   log "DEBUG: Processing mobile interfaces for initial setup"
-  mobile_interfaces=$(ls /sys/class/net 2>/dev/null | grep -E '^(rmnet)')
+  mobile_interfaces=$(ls /sys/class/net 2>/dev/null \
+                    | grep -E '^rmnet_data[0-9]+(@|$)')
   log "DEBUG: Found mobile interfaces: $mobile_interfaces"
   
   for iface in $mobile_interfaces; do
