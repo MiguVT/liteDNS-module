@@ -202,49 +202,41 @@ cleanup_previous_monitors() {
   fi
 }
 
+# Simplify interface checks to match "rmnet_data" for mobile data and "wlan" for Wi-Fi
 process_new_interface() {
   local iface="$1"
   log "DEBUG: Entering process_new_interface for $iface"
-  
-  local base_iface=$(echo "$iface" | cut -d '@' -f 1)
-  log "DEBUG: Base interface name: $base_iface"
-  
-  if ! echo "$base_iface" | grep -qE '^(wlan|rmnet|pdp|ppp|rmnet_data)'; then
-    log "DEBUG: Interface $base_iface is not a supported type, skipping"
-    return 0
+
+  # Check for mobile data interface
+  if echo "$iface" | grep -q "rmnet_data"; then
+    log "DEBUG: Processing mobile interface $iface (MOBILE_CUSTOM_DNS=$MOBILE_CUSTOM_DNS)"
+    [ "$MOBILE_CUSTOM_DNS" -eq 1 ] && apply_dns_iptables "$iface" "$DNS"
+  # Check for Wi-Fi interface
+  elif echo "$iface" | grep -q "wlan"; then
+    log "DEBUG: Processing WiFi interface $iface (WIFI_CUSTOM_DNS=$WIFI_CUSTOM_DNS)"
+    [ "$WIFI_CUSTOM_DNS" -eq 1 ] && apply_dns_iptables "$iface" "$DNS"
+  else
+    log "DEBUG: Interface $iface is not a supported type, skipping"
   fi
-  
-  case "$base_iface" in
-    wlan*) 
-      log "DEBUG: Processing WiFi interface $base_iface (WIFI_CUSTOM_DNS=$WIFI_CUSTOM_DNS)"
-      [ "$WIFI_CUSTOM_DNS" -eq 1 ] && apply_dns_iptables "$base_iface" "$DNS" 
-      ;;
-    rmnet*|pdp*|ppp*|rmnet_data*) 
-      log "DEBUG: Processing mobile interface $base_iface (MOBILE_CUSTOM_DNS=$MOBILE_CUSTOM_DNS)"
-      [ "$MOBILE_CUSTOM_DNS" -eq 1 ] && apply_dns_iptables "$base_iface" "$DNS" 
-      ;;
-  esac
-  
+
   log "DEBUG: Exiting process_new_interface for $iface"
 }
 
+# Function to start monitoring network interfaces
+# Monitors for changes in interface states and processes them dynamically
 start_interface_monitor() {
   log "DEBUG: Entering start_interface_monitor"
   cleanup_previous_monitors
   log "DEBUG: Previous monitors cleaned up"
-  
+
+  # Process existing interfaces at startup
   log "Processing existing network interfaces..."
-  for iface in $(ls /sys/class/net 2>/dev/null | grep -E '^(wlan|rmnet|pdp|ppp|rmnet_data)'); do
+  for iface in $(ls /sys/class/net 2>/dev/null); do
     log "DEBUG: Found existing interface: $iface"
-    base_iface=$(echo "$iface" | cut -d '@' -f 1)
-    log "Processing existing interface: $base_iface"
-    process_new_interface "$base_iface"
+    process_new_interface "$iface"
   done
 
-  log "DEBUG: Creating initial interface list"
-  ip -o link show | awk -F': ' '{print $2}' | cut -d '@' -f 1 | grep -E '^(wlan|rmnet|pdp|ppp|rmnet_data)' > "$IFACES_FILE"
-  log "Initial interface list created with $(wc -l < "$IFACES_FILE") interfaces"
-  
+  # Start monitoring for interface changes
   log "DEBUG: Starting interface monitor subprocess"
   (
     if command -v ip >/dev/null; then
@@ -254,44 +246,23 @@ start_interface_monitor() {
         if echo "$line" | grep -q "state UP"; then
           local iface=$(echo "$line" | awk '{print $2}' | cut -d '@' -f 1 | sed 's/://g')
           log "DEBUG: Detected interface state change: $iface"
-          if echo "$iface" | grep -qE '^(wlan|rmnet|pdp|ppp|rmnet_data)'; then
-            log "Active interface detected: $iface"
-            process_new_interface "$iface"
-            ip -o link show | awk -F': ' '{print $2}' | cut -d '@' -f 1 | grep -E '^(wlan|rmnet|pdp|ppp|rmnet_data)' > "$IFACES_FILE"
-          fi
+          process_new_interface "$iface"
         fi
       done
     else
       log "ip monitor not available, using adaptive polling"
-      log "DEBUG: Starting polling loop for interface monitoring"
-      local sleep_time=5
-      local changes_detected=0
       while true; do
         for iface in $(ls /sys/class/net/ 2>/dev/null); do
-          base_iface=$(echo "$iface" | cut -d '@' -f 1)
-          if echo "$base_iface" | grep -qE '^(wlan|rmnet|pdp|ppp|rmnet_data)'; then
-            if [ -f "/sys/class/net/$iface/operstate" ] && [ "$(cat "/sys/class/net/$iface/operstate")" = "up" ] && ! grep -q "^$base_iface$" "$IFACES_FILE" 2>/dev/null; then
-              log "DEBUG: New active interface found in polling: $base_iface"
-              log "New active interface detected: $base_iface"
-              process_new_interface "$base_iface"
-              echo "$base_iface" >> "$IFACES_FILE"
-              changes_detected=1
-            fi
+          if [ -f "/sys/class/net/$iface/operstate" ] && [ "$(cat "/sys/class/net/$iface/operstate")" = "up" ]; then
+            log "DEBUG: Detected active interface: $iface"
+            process_new_interface "$iface"
           fi
         done
-        if [ "$changes_detected" -eq 1 ]; then
-          log "DEBUG: Changes detected, resetting sleep timer"
-          sleep_time=5
-          changes_detected=0
-        else
-          [ "$sleep_time" -lt 30 ] && sleep_time=$((sleep_time + 5))
-          log "DEBUG: No changes, sleep time now $sleep_time seconds"
-        fi
-        sleep $sleep_time
+        sleep 5
       done
     fi
   ) &
-  
+
   echo $! > "$MONITOR_PID_FILE"
   log "Interface monitor started (PID: $(cat "$MONITOR_PID_FILE"))"
   log "DEBUG: Exiting start_interface_monitor"
@@ -305,7 +276,7 @@ log "DEBUG: Starting initial DNS rules application"
 
 if [ "$MOBILE_CUSTOM_DNS" -eq 1 ]; then
   log "DEBUG: Processing mobile interfaces for initial setup"
-  mobile_interfaces=$(ls /sys/class/net 2>/dev/null | grep -E '^(rmnet|pdp|ppp|rmnet_data)')
+  mobile_interfaces=$(ls /sys/class/net 2>/dev/null | grep -E '^(rmnet)')
   log "DEBUG: Found mobile interfaces: $mobile_interfaces"
   
   for iface in $mobile_interfaces; do
